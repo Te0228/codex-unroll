@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "unicorn", "oxc", "import"],
+  "env": { "browser": true, "node": true, "es2024": true },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "no-console": "off",
+    "typescript/no-explicit-any": "error",
+    "typescript/consistent-type-imports": "warn",
+    "eqeqeq": ["error", "smart"],
+    "no-var": "error",
+    "prefer-const": "error",
+    // React 17+ 的 automatic JSX runtime 不需要 React 在作用域内（tsconfig 是 jsx: react-jsx）
+    "react/react-in-jsx-scope": "off",
+    // 循环里 await 在这里是刻意的：目录扫描要顺序遍历以便提前停止（§10.2）
+    "no-await-in-loop": "off"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "src/main/smoke.ts"],
+      "rules": {
+        "typescript/no-explicit-any": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "no-shadow": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["out", ".vite", "node_modules", "test/fixtures"]
+}

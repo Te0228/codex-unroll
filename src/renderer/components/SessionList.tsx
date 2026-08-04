@@ -1,0 +1,156 @@
+/**
+ * 左栏会话列表（§6.1，240px；F1 / F2）+ 按项目分组（§12 Q3）。
+ * 每项：时间、模型、文件大小、首条用户消息（截断）。
+ *
+ * ★ 只有一个项目时不渲染组头。
+ *   大多数人 90% 的会话在同一个仓库，硬套一层分组是纯粹的视觉噪音，
+ *   而且 240px 里每一层缩进都在抢文件名的位置。此时退化成完全扁平的列表。
+ */
+import { useEffect, useMemo, useRef } from 'react';
+import type { SessionListItem } from '../../shared/types';
+import { basename, formatBytes, formatStamp } from '../format';
+import { groupKeyOf, groupSessions, matchesProjectName, matchesSession } from '../sessionGroups';
+import { useCollapsedGroups } from '../hooks/useCollapsedGroups';
+
+export interface SessionListProps {
+  items: SessionListItem[];
+  activePath: string | null;
+  filter: string;
+  onFilterChange: (v: string) => void;
+  onOpen: (path: string) => void;
+  onOpenDialog: () => void;
+  onReload: () => void;
+}
+
+export function SessionList({
+  items,
+  activePath,
+  filter,
+  onFilterChange,
+  onOpen,
+  onOpenDialog,
+  onReload,
+}: SessionListProps) {
+  const { isCollapsed, toggle, expand } = useCollapsedGroups();
+
+  // 先过滤再分组：过滤后为空的组自然不存在，也就不会渲染出空组头
+  const groups = useMemo(
+    () => groupSessions(items.filter((it) => matchesSession(it, filter))),
+    [items, filter],
+  );
+
+  /**
+   * 打开会话时自动展开它所在的组——「用户永远看得到自己在哪」的兜底。
+   *
+   * ⚠️ 只在 activePath **变化**时展开，不是每次渲染都展开：
+   *    否则用户在打开某个会话后就再也折不上那个组了（折完立刻被弹开）。
+   *    找不到对应项时不记 ref，等会话列表加载完再补一次（拖放先于扫描完成的情况）。
+   */
+  const autoExpandedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activePath) return;
+    if (autoExpandedRef.current === activePath) return;
+    const hit = items.find((it) => it.path === activePath);
+    if (!hit) return;
+    autoExpandedRef.current = activePath;
+    expand(groupKeyOf(hit));
+  }, [activePath, items, expand]);
+
+  /**
+   * 过滤命中来自项目名时强制显示组头（哪怕只剩一个项目）。
+   * 这些会话自己的文字里没有搜索词，组头是唯一能解释「凭什么选中它们」的东西。
+   * **仅限这一种情况**——正常的单项目场景照旧扁平渲染。
+   */
+  const projectHit = useMemo(
+    () => groups.some((g) => g.items.some((it) => matchesProjectName(it, filter))),
+    [groups, filter],
+  );
+
+  const grouped = groups.length > 1 || projectHit;
+  const total = groups.reduce((n, g) => n + g.items.length, 0);
+
+  const renderItem = (it: SessionListItem) => (
+    <button
+      key={it.path}
+      type="button"
+      className={`session-item${it.path === activePath ? ' active' : ''}`}
+      data-testid="session-item"
+      data-path={it.path}
+      onClick={() => onOpen(it.path)}
+    >
+      <span className="session-time">
+        <span>{formatStamp(it.mtime)}</span>
+        <span>{formatBytes(it.size)}</span>
+      </span>
+      <span className="session-first">{it.firstUser || basename(it.path)}</span>
+      <span className="session-model">{it.model || ''}</span>
+    </button>
+  );
+
+  return (
+    <nav className="sessions" data-testid="session-list" aria-label="会话列表">
+      <div className="sessions-head">
+        <h2>会话</h2>
+        <span className="spacer" />
+        <button className="icon-btn" onClick={onOpenDialog} title="打开文件 ⌘O" aria-label="打开文件">
+          📂
+        </button>
+        <button className="icon-btn" onClick={onReload} title="刷新 r" aria-label="刷新">
+          ↻
+        </button>
+      </div>
+
+      <input
+        className="sessions-filter"
+        placeholder="过滤…"
+        aria-label="过滤会话"
+        value={filter}
+        onChange={(e) => onFilterChange(e.target.value)}
+      />
+
+      <div className="sessions-list">
+        {total === 0 && <p className="sessions-empty">没有会话</p>}
+
+        {grouped
+          ? groups.map((g) => {
+              const off = isCollapsed(g.key);
+              // 用户可以在打开会话之后再手动折叠该组——那时自动展开不生效，
+              // 只能靠这个点告诉他「你正看的那条在里面」
+              const hidesActive = off && g.items.some((it) => it.path === activePath);
+              return (
+                <section className="session-group" key={g.key} data-testid="session-group" data-key={g.key}>
+                  <button
+                    type="button"
+                    className="session-group-head"
+                    data-testid="session-group-head"
+                    data-key={g.key}
+                    aria-expanded={!off}
+                    // 组名会被省略号截掉，悬停给出完整身份（git:host/owner/repo 或 dir:绝对路径）
+                    title={g.unknown ? g.label : g.key}
+                    onClick={() => toggle(g.key)}
+                  >
+                    <span className="session-group-caret" aria-hidden="true">
+                      {off ? '▸' : '▾'}
+                    </span>
+                    {hidesActive && (
+                      <span
+                        className="session-group-dot g-input"
+                        data-testid="session-group-dot"
+                        title="当前打开的会话在这个组里"
+                        aria-label="当前打开的会话在这个组里"
+                      >
+                        ●
+                      </span>
+                    )}
+                    <span className="session-group-label">{g.label}</span>
+                    <span className="session-group-count">{g.items.length}</span>
+                  </button>
+                  {!off && <div className="session-group-items">{g.items.map(renderItem)}</div>}
+                </section>
+              );
+            })
+          : (groups[0]?.items ?? []).map(renderItem)}
+      </div>
+    </nav>
+  );
+}

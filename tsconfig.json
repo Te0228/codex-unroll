@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    // Vite 负责实际打包（main/preload → CJS，renderer → ESM），
+    // 这里只做类型检查，用 bundler 解析最贴近真实行为。
+    // TS 7 已移除 baseUrl 与 moduleResolution=node10。
+    "module": "preserve",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "strict": true,
+    "noEmit": true,
+    "sourceMap": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": ["src", "*.ts", "forge.env.d.ts"],
+  "exclude": ["node_modules", "out", ".vite"]
+}

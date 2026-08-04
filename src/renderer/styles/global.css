@@ -1,0 +1,736 @@
+/*
+ * 主题基座 + 三栏布局（SPEC §6.1 / §6.3）。
+ * 中性底沿用 GitHub 配色，与读代码场景一致（§12 Q5）。
+ *
+ * ⚠️ 生产 CSP 是 `style-src 'self'`（§9），行内 style 属性会被拦。
+ *    所有样式写在本文件里，组件不要用 style={{...}}。
+ *    需要动态值（详情面板宽度）时走 CSSOM：
+ *    document.documentElement.style.setProperty('--panel-w', …)
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* 中性底 */
+  --bg: #ffffff;
+  --bg-sunken: #f6f8fa;
+  --fg: #1f2328;
+  --fg-muted: #59636e;
+  --border: #d1d9e0;
+
+  /* 六组语义色（§6.3）——只承载语义，不做装饰 */
+  --g-input: #0969da;
+  --g-think: #8c959f;
+  --g-act: #bc4c00;
+  --g-output: #1a7f37;
+  --g-meta: #8c959f;
+  --g-error: #cf222e;
+
+  --sel: #ddf4ff;
+  --hover: #eaeef2;
+  --mark: #fff8c5;
+
+  /* 布局尺寸（§6.1）。--panel-w 由 useResizable 通过 CSSOM 覆盖 */
+  --top-h: 28px;
+  --bottom-h: 26px;
+  --left-w: 240px;
+  --panel-w: 420px;
+  --row-h: 22px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --bg-sunken: #151b23;
+    --fg: #f0f6fc;
+    --fg-muted: #9198a1;
+    --border: #3d444d;
+
+    --g-input: #58a6ff;
+    --g-think: #6e7681;
+    --g-act: #db6d28;
+    --g-output: #3fb950;
+    --g-meta: #6e7681;
+    --g-error: #f85149;
+
+    --sel: #163356;
+    --hover: #21262d;
+    --mark: #4c3d00;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  /* F12：滚动只发生在各自的面板内部，body 永不滚动 */
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+code,
+pre,
+.mono {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    monospace;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+/* ── 六组语义色 class（CSP 下不能用行内 style，颜色只能靠 class）───────── */
+
+.g-input {
+  color: var(--g-input);
+}
+.g-think {
+  color: var(--g-think);
+}
+.g-act {
+  color: var(--g-act);
+}
+.g-output {
+  color: var(--g-output);
+}
+.g-meta {
+  color: var(--g-meta);
+}
+.g-error {
+  color: var(--g-error);
+}
+
+/* ── 外壳：顶部状态条 28px / 主体 / 底部状态栏 26px ──────────────────── */
+
+.shell {
+  display: grid;
+  grid-template-rows: var(--top-h) minmax(0, 1fr) var(--bottom-h);
+  height: 100%;
+  overflow: hidden;
+}
+
+.shell-body {
+  display: grid;
+  grid-template-columns: var(--left-w) minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 详情面板选中才渲染（§6.1 / F6）——未选中时时间线占满宽度 */
+.shell-body.has-panel {
+  grid-template-columns: var(--left-w) minmax(0, 1fr) var(--panel-w);
+}
+
+.shell-body.no-left {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shell-body.no-left.has-panel {
+  grid-template-columns: minmax(0, 1fr) var(--panel-w);
+}
+
+/* ── 顶部状态条（§6.1，28px，只有 model · approval · sandbox）────────── */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--top-h);
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sunken);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sb-file {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--fg-muted);
+}
+
+.sb-sep {
+  opacity: 0.5;
+}
+
+.sb-empty {
+  color: var(--fg-muted);
+}
+
+/* ── 左栏：会话列表（240px）──────────────────────────────────────── */
+
+.sessions {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-sunken);
+}
+
+.sessions-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sessions-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sessions-head .spacer {
+  margin-left: auto;
+}
+
+.icon-btn {
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: var(--fg-muted);
+}
+
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.sessions-filter {
+  margin: 6px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+}
+
+.sessions-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.session-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.session-item:hover {
+  background: var(--hover);
+}
+
+.session-item.active {
+  background: var(--sel);
+}
+
+.session-time {
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/*
+ * display:block 是必须的：这两个是 <span>，行内元素不吃 overflow / text-overflow，
+ * 不加就会出现「消息被拦腰截断且无省略号」+「模型名续在消息同一行」。
+ */
+.session-first {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-model {
+  display: block;
+  font-size: 11px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sessions-empty {
+  padding: 10px 8px;
+  color: var(--fg-muted);
+}
+
+/* ── 左栏：按项目分组（§12 Q3）────────────────────────────────────
+ *
+ * 240px 是这几条数字的唯一来源：组头压到 20px / 11px 字号，
+ * 组内缩进只给 6px（8px → 14px）。再多一点就开始吃首条用户消息的位置，
+ * 而那才是用户真正用来认会话的东西。
+ * 只有一组时组头根本不渲染（见 SessionList.tsx），这套样式只在多组时生效。
+ */
+
+.session-group-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 20px;
+  min-height: 20px;
+  padding: 0 6px;
+  text-align: left;
+  font-size: 11px;
+  color: var(--fg-muted);
+  /* 滚动时组头吸顶，长列表里才知道当前在哪个项目下；背景必须不透明 */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border);
+}
+
+.session-group-head:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.session-group-caret {
+  flex: none;
+  width: 9px;
+}
+
+/* 折叠组里藏着当前打开的会话时的标记。颜色走 --g-input（.g-input class），
+ * 但形状本身（●）独立于颜色，灰度下也看得见（F21 的同一条原则） */
+.session-group-dot {
+  flex: none;
+  font-size: 8px;
+  line-height: 1;
+}
+
+/* min-width:0 是 flex 子项能被压缩、省略号才生效的必要条件 */
+.session-group-label {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-group-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-group-items .session-item {
+  padding-left: 14px;
+}
+
+/* ── 主区：时间线 ────────────────────────────────────────────────── */
+
+.timeline {
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+}
+
+.timeline-inner {
+  min-width: 100%;
+}
+
+/*
+ * ★ 时间线的核心约束（§6.0 / §6.2 / 验收 F2 F3）：
+ *   固定单行高、永不换行、超出省略号截断。
+ *   height 与 line-height 都钉死在 --row-h，任何条目（哪怕 11 459 字符）
+ *   都只占一行。改这里等于改设计前提。
+ */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: var(--row-h);
+  min-height: var(--row-h);
+  max-height: var(--row-h);
+  line-height: var(--row-h);
+  padding: 0 8px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    monospace;
+  font-size: 12px;
+}
+
+.row:hover {
+  background: var(--hover);
+}
+
+.row.selected {
+  background: var(--sel);
+}
+
+.row-index {
+  flex: 0 0 3ch;
+  text-align: right;
+  color: var(--fg-muted);
+}
+
+.row-time {
+  flex: 0 0 8ch;
+  color: var(--fg-muted);
+}
+
+.row-symbol {
+  flex: 0 0 1.5ch;
+  text-align: center;
+}
+
+.row-kind {
+  flex: 0 0 5ch;
+}
+
+.row-title {
+  flex: 0 0 auto;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 空状态拖放区（§6.4 / F23 F24）────────────────────────────────── */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--fg-muted);
+}
+
+.dropzone-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 56px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+}
+
+.dropzone.over .dropzone-box {
+  border-color: var(--g-input);
+  background: var(--bg-sunken);
+}
+
+.dropzone-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.dropzone-title {
+  font-size: 15px;
+  color: var(--fg);
+}
+
+.dropzone-dir {
+  font-size: 11px;
+}
+
+/* ── 右栏：详情面板（§6.1，选中才渲染）─────────────────────────────── */
+
+.detail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+}
+
+/* 拖拽把手：改宽度走 CSSOM 写 --panel-w，不用行内 style */
+.panel-resizer {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.panel-resizer:hover {
+  background: var(--g-input);
+  opacity: 0.4;
+}
+
+.detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sunken);
+}
+
+.detail-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-type {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.detail-close {
+  margin-left: auto;
+  color: var(--fg-muted);
+}
+
+.detail-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+}
+
+.detail-search .hits {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/* F12：详情面板独立滚动，主区不滚 */
+.detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px 16px;
+}
+
+.detail-meta {
+  display: grid;
+  grid-template-columns: 6em 1fr;
+  gap: 2px 8px;
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
+.detail-meta dt {
+  color: var(--fg-muted);
+}
+
+.detail-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-content {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  font-size: 12px;
+  /* §10.2：超大内容限高 + 内部滚动，不把 12 000 字符一次塞进视口 */
+  max-height: 60vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.detail-empty {
+  color: var(--fg-muted);
+}
+
+.truncate-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.link-btn {
+  color: var(--g-input);
+  text-decoration: underline;
+}
+
+mark {
+  background: var(--mark);
+  color: inherit;
+}
+
+/* ── 详情面板内的「原始 JSON」段（第二层，默认折叠）───────────────── */
+
+.rawjson {
+  margin-top: 12px;
+}
+
+.rawjson-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 4px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+}
+
+.rawjson-toggle:hover {
+  color: var(--fg);
+}
+
+.rawjson-pre {
+  margin: 6px 0 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  font-size: 11px;
+  max-height: 50vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── 底部状态栏：6 组过滤 + 计数 + 搜索 + 跟随（§6.1，26px）────────── */
+
+.filterbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--bottom-h);
+  padding: 0 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sunken);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.fb-sessions {
+  flex: 0 0 auto;
+  width: calc(var(--left-w) - 16px);
+  color: var(--fg-muted);
+}
+
+.fb-total {
+  color: var(--fg-muted);
+}
+
+.fb-groups {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.fb-group:hover {
+  background: var(--hover);
+}
+
+.fb-group.off {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.fb-group.on {
+  border-color: var(--border);
+}
+
+.fb-search {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fb-search input {
+  width: 160px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  font-size: 11px;
+}
+
+.fb-follow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-muted);
+}
+
+.fb-follow.live {
+  color: var(--g-output);
+}

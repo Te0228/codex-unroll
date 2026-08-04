@@ -1,0 +1,80 @@
+{
+  "name": "codex-unroll",
+  "productName": "codex-unroll",
+  "version": "0.1.0",
+  "description": "Desktop viewer for OpenAI Codex CLI session rollout logs (.jsonl) — read agent traces as a searchable timeline, follow live, with API keys redacted.",
+  "main": ".vite/build/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "oxlint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "lint:fix": "oxlint --fix"
+  },
+  "keywords": [
+    "codex",
+    "codex-cli",
+    "openai-codex",
+    "rollout",
+    "jsonl",
+    "jsonl-viewer",
+    "log-viewer",
+    "session-viewer",
+    "agent",
+    "ai-agent",
+    "agent-trace",
+    "observability",
+    "electron",
+    "react",
+    "typescript",
+    "devtools",
+    "llm",
+    "prompt-engineering",
+    "macos"
+  ],
+  "author": "Te0228",
+  "license": "MIT",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-deb": "^7.11.2",
+    "@electron-forge/maker-rpm": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "@electron-forge/maker-zip": "^7.11.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.2",
+    "@electron-forge/plugin-fuses": "^7.11.2",
+    "@electron-forge/plugin-vite": "^7.11.2",
+    "@electron/fuses": "^1.8.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
+    "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/coverage-v8": "^3.2.7",
+    "electron": "43.2.0",
+    "jsdom": "^29.1.1",
+    "oxlint": "^1.77.0",
+    "typescript": "^7.0.2",
+    "vite": "^5.4.21",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "homepage": "https://github.com/Te0228/codex-unroll#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Te0228/codex-unroll.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Te0228/codex-unroll/issues"
+  }
+}
