@@ -2,14 +2,16 @@
  * 左栏会话列表（§6.1，240px；F1 / F2）+ 按项目分组（§12 Q3）。
  * 每项：时间、模型、文件大小、首条用户消息（截断）。
  *
- * ★ 只有一个项目时不渲染组头。
- *   大多数人 90% 的会话在同一个仓库，硬套一层分组是纯粹的视觉噪音，
- *   而且 240px 里每一层缩进都在抢文件名的位置。此时退化成完全扁平的列表。
+ * ★ 组头一律显示，**哪怕只有一个项目**。
+ *   曾经反过来做过（单组时抑制组头，理由是「值恒定 = 噪音」），实测被推翻：
+ *   组头承载的是**项目身份**，不是分组的装饰。9 个会话全在 openai/codex 的用户
+ *   打开 app 后「根本不知道自己在看哪个仓库」——项目信息只剩详情面板里的 cwd。
+ *   身份信息不能因为「当前只有一个值」就隐藏。
  */
 import { useEffect, useMemo, useRef } from 'react';
 import type { SessionListItem } from '../../shared/types';
 import { basename, formatBytes, formatStamp } from '../format';
-import { groupKeyOf, groupSessions, matchesProjectName, matchesSession } from '../sessionGroups';
+import { groupKeyOf, groupSessions, matchesSession } from '../sessionGroups';
 import { useCollapsedGroups } from '../hooks/useCollapsedGroups';
 
 export interface SessionListProps {
@@ -56,17 +58,6 @@ export function SessionList({
     expand(groupKeyOf(hit));
   }, [activePath, items, expand]);
 
-  /**
-   * 过滤命中来自项目名时强制显示组头（哪怕只剩一个项目）。
-   * 这些会话自己的文字里没有搜索词，组头是唯一能解释「凭什么选中它们」的东西。
-   * **仅限这一种情况**——正常的单项目场景照旧扁平渲染。
-   */
-  const projectHit = useMemo(
-    () => groups.some((g) => g.items.some((it) => matchesProjectName(it, filter))),
-    [groups, filter],
-  );
-
-  const grouped = groups.length > 1 || projectHit;
   const total = groups.reduce((n, g) => n + g.items.length, 0);
 
   const renderItem = (it: SessionListItem) => (
@@ -111,45 +102,43 @@ export function SessionList({
       <div className="sessions-list">
         {total === 0 && <p className="sessions-empty">没有会话</p>}
 
-        {grouped
-          ? groups.map((g) => {
-              const off = isCollapsed(g.key);
-              // 用户可以在打开会话之后再手动折叠该组——那时自动展开不生效，
-              // 只能靠这个点告诉他「你正看的那条在里面」
-              const hidesActive = off && g.items.some((it) => it.path === activePath);
-              return (
-                <section className="session-group" key={g.key} data-testid="session-group" data-key={g.key}>
-                  <button
-                    type="button"
-                    className="session-group-head"
-                    data-testid="session-group-head"
-                    data-key={g.key}
-                    aria-expanded={!off}
-                    // 组名会被省略号截掉，悬停给出完整身份（git:host/owner/repo 或 dir:绝对路径）
-                    title={g.unknown ? g.label : g.key}
-                    onClick={() => toggle(g.key)}
+        {groups.map((g) => {
+          const off = isCollapsed(g.key);
+          // 用户可以在打开会话之后再手动折叠该组——那时自动展开不生效，
+          // 只能靠这个点告诉他「你正看的那条在里面」
+          const hidesActive = off && g.items.some((it) => it.path === activePath);
+          return (
+            <section className="session-group" key={g.key} data-testid="session-group" data-key={g.key}>
+              <button
+                type="button"
+                className="session-group-head"
+                data-testid="session-group-head"
+                data-key={g.key}
+                aria-expanded={!off}
+                // 组名会被省略号截掉，悬停给出完整身份（git:host/owner/repo 或 dir:绝对路径）
+                title={g.unknown ? g.label : g.key}
+                onClick={() => toggle(g.key)}
+              >
+                <span className="session-group-caret" aria-hidden="true">
+                  {off ? '▸' : '▾'}
+                </span>
+                {hidesActive && (
+                  <span
+                    className="session-group-dot g-input"
+                    data-testid="session-group-dot"
+                    title="当前打开的会话在这个组里"
+                    aria-label="当前打开的会话在这个组里"
                   >
-                    <span className="session-group-caret" aria-hidden="true">
-                      {off ? '▸' : '▾'}
-                    </span>
-                    {hidesActive && (
-                      <span
-                        className="session-group-dot g-input"
-                        data-testid="session-group-dot"
-                        title="当前打开的会话在这个组里"
-                        aria-label="当前打开的会话在这个组里"
-                      >
-                        ●
-                      </span>
-                    )}
-                    <span className="session-group-label">{g.label}</span>
-                    <span className="session-group-count">{g.items.length}</span>
-                  </button>
-                  {!off && <div className="session-group-items">{g.items.map(renderItem)}</div>}
-                </section>
-              );
-            })
-          : (groups[0]?.items ?? []).map(renderItem)}
+                    ●
+                  </span>
+                )}
+                <span className="session-group-label">{g.label}</span>
+                <span className="session-group-count">{g.items.length}</span>
+              </button>
+              {!off && <div className="session-group-items">{g.items.map(renderItem)}</div>}
+            </section>
+          );
+        })}
       </div>
     </nav>
   );

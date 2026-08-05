@@ -475,3 +475,18 @@ describe('summarize · 缺字段兜底', () => {
     expect(s.outputTokens).toBe(20);
   });
 });
+
+describe('§6.6 summarize 提取 git 远端（项目身份的来源）', () => {
+  it('01 号夹具带出 repository_url 与 branch', () => {
+    const s = summarize(toEntries(readFixtureLines('01-apply-patch-rejected.jsonl')));
+    expect(s.repositoryUrl).toBe('https://github.com/openai/codex.git');
+    expect(s.branch).toBe('main');
+  });
+
+  it('缺 git 字段时为 undefined，不崩', () => {
+    const s = summarize(toEntries(['{"type":"session_meta","payload":{"cwd":"/p"}}']));
+    expect(s.repositoryUrl).toBeUndefined();
+    expect(s.branch).toBeUndefined();
+    expect(s.cwd).toBe('/p');
+  });
+});

@@ -44,9 +44,11 @@ const createWindow = () => {
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error('[unroll] LOAD FAILED', code, desc, url);
   });
-  mainWindow.webContents.on('console-message', (_e, _lvl, message) => {
-    if (message.includes('Content Security Policy') || message.includes('Refused')) {
-      console.error('[unroll] CSP:', message);
+  // 渲染进程的报错必须能在主进程日志里看到。只报 CSP 的话，
+  // React 渲染期抛异常会表现为「页面一片空白但 DOM 查询正常」这种极难定位的现象。
+  mainWindow.webContents.on('console-message', (e) => {
+    if (e.level === 'error' || e.level === 'warning') {
+      console.error(`[unroll] renderer ${e.level}:`, e.message);
     }
   });
 

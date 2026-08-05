@@ -166,6 +166,57 @@ describe('顶部状态条（§6.1 / F4 / F5 / F8）', () => {
     expect(container.querySelector('[class*="card"]')).toBeNull();
   });
 
+  /**
+   * §12 Q3：左栏组头能回答「这是哪个仓库」，但 ⌘1 一折叠就没了，
+   * 所以状态条也要挂项目身份。
+   */
+  it('状态条显示当前会话的项目 label（git 远端优先于 cwd）', async () => {
+    await open();
+    const proj = screen.getByTestId('statusbar-project');
+    // 01 号夹具：cwd=/Users/dev/workspace/codex/codex-rs，
+    // repository_url=https://github.com/openai/codex.git → 认仓库而不是目录
+    expect(proj.textContent).toContain('openai/codex');
+    expect(screen.getByTestId('statusbar-branch').textContent).toContain('main');
+  });
+
+  it('状态条项目的 title 挂完整 cwd（用户要看实际目录）', async () => {
+    await open();
+    expect(screen.getByTestId('statusbar-project').getAttribute('title')).toContain(
+      '/Users/dev/workspace/codex/codex-rs',
+    );
+  });
+
+  it('⌘1 折掉左栏后，项目身份仍然看得到', async () => {
+    await open();
+    fireEvent.keyDown(window, { key: '1', metaKey: true });
+    expect(screen.queryByTestId('session-list')).toBeNull();
+    expect(screen.getByTestId('statusbar-project').textContent).toContain('openai/codex');
+  });
+
+  it('未打开文件时不渲染项目段，也不出现 undefined', async () => {
+    render(<App />);
+    await screen.findAllByTestId('session-item');
+    expect(screen.queryByTestId('statusbar-project')).toBeNull();
+    expect(screen.getByTestId('statusbar').textContent).not.toContain('undefined');
+  });
+
+  it('summary 缺 cwd / repositoryUrl 时显示「未知项目」而不是 undefined', async () => {
+    // 只有 session_meta 之外的行 → summary 里没有 cwd / git
+    (api.readSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+      path: '/tmp/bare.jsonl',
+      lines: [JSON.stringify({ timestamp: '', type: 'event_msg', payload: { type: 'user_message', message: 'hi' } })],
+      size: 10,
+    });
+    const view = render(<App />);
+    const items = await screen.findAllByTestId('session-item');
+    await act(async () => {
+      fireEvent.click(items[0]);
+    });
+    const proj = await screen.findByTestId('statusbar-project');
+    expect(proj.textContent).toContain('未知项目');
+    expect(view.container.textContent).not.toContain('undefined');
+  });
+
   it('F8 · provider/effort/耗时/token 在「选中会话头条目」时于详情面板展示', async () => {
     await open();
     fireEvent.click(rowAt(0));
@@ -281,9 +332,13 @@ describe('详情面板（§6.1 / F6–F13）', () => {
     const { container } = await open();
     for (const r of rows()) expect(r.getAttribute('aria-expanded')).toBeNull();
     fireEvent.click(rowAt(11));
-    const expandables = container.querySelectorAll('[aria-expanded]');
-    expect(expandables).toHaveLength(1);
-    expect((expandables[0] as HTMLElement).dataset.testid).toBe('rawjson-toggle');
+    // 只看「时间线 + 详情面板」这条下钻路径。左栏组头也是 aria-expanded，
+    // 但它属于会话导航，不是条目的第三层。
+    const drill = [...container.querySelectorAll('[aria-expanded]')].filter(
+      (el) => !el.closest('.sessions'),
+    );
+    expect(drill).toHaveLength(1);
+    expect((drill[0] as HTMLElement).dataset.testid).toBe('rawjson-toggle');
   });
 });
 
@@ -619,20 +674,24 @@ describe('会话列表按项目分组（§12 Q3）', () => {
     expect(heads().map((h) => h.querySelector('.session-group-count')!.textContent)).toEqual(['1', '2']);
   });
 
-  /** 硬要求 1 的哨兵：90% 的人所有会话都在一个仓库，那时分组只是噪音 */
-  it('单项目 → 完全不渲染组头，退化成扁平列表', async () => {
+  /**
+   * 哨兵：曾经反过来做过（单组时抑制组头），被实测推翻——
+   * 所有会话都在一个仓库的用户反而**完全看不到自己在看哪个仓库**。
+   * 组头是项目身份，不是分组装饰，恒定值也要显示。
+   */
+  it('单项目 → 照样渲染组头（项目身份不因「只有一个值」而隐藏）', async () => {
     withProjects([F01_CODEX, F02_CODEX]);
     render(<App />);
     await screen.findAllByTestId('session-item');
-    expect(screen.queryAllByTestId('session-group-head')).toHaveLength(0);
-    expect(screen.queryAllByTestId('session-group')).toHaveLength(0);
+    expect(headText()).toEqual(['openai/codex']);
+    expect(screen.getAllByTestId('session-group')).toHaveLength(1);
     expect(itemPaths()).toEqual([F01, F02]);
   });
 
-  it('全部缺 project 时也只有一组 → 同样不显示「未知项目」组头', async () => {
+  it('全部缺 project 时显示单个「未知项目」组头', async () => {
     render(<App />); // 默认 mock 的三项都没有 project
     await screen.findAllByTestId('session-item');
-    expect(screen.queryAllByTestId('session-group-head')).toHaveLength(0);
+    expect(headText()).toEqual(['未知项目']);
     expect(screen.getAllByTestId('session-item')).toHaveLength(3);
   });
 
@@ -655,19 +714,8 @@ describe('会话列表按项目分组（§12 Q3）', () => {
     // 'x/demo' 只出现在 project.label 里，F03 的路径/首条消息都没有
     fireEvent.change(screen.getByLabelText('过滤会话'), { target: { value: 'x/demo' } });
     expect(itemPaths()).toEqual([F03]);
-    // 命中来自项目名 → 即使只剩一个项目也要显示组头，否则没有任何东西
-    // 解释「凭什么选中这条」
+    // 组头留着，正好解释「凭什么选中这条」——它自己的文字里没有搜索词
     expect(headText()).toEqual(['x/demo']);
-  });
-
-  it('命中来自会话自身字段时，单项目仍然扁平渲染（不被上一条带偏）', async () => {
-    withProjects([F01_CODEX, F02_CODEX, F03_DEMO]);
-    render(<App />);
-    await screen.findAllByTestId('session-item');
-    // 'hello.txt' 只在 firstUser 里，项目名没有
-    fireEvent.change(screen.getByLabelText('过滤会话'), { target: { value: 'hello.txt' } });
-    expect(itemPaths()).toEqual([F01]);
-    expect(screen.queryAllByTestId('session-group-head')).toHaveLength(0);
   });
 
   it('组头 title 给出完整项目身份（组名被省略号截断时的兜底）', async () => {

@@ -77,6 +77,13 @@ export interface SessionSummary {
   cwd: string;
   cliVersion: string;
   provider: string;
+  /**
+   * git 远端与分支，取自 session_meta.payload.git。
+   * 用来推导「项目」身份——Codex 在磁盘上按 `sessions/YYYY/MM/DD/` 存，
+   * 完全不按项目组织，项目归属只能从这里重建（§6.6）。
+   */
+  repositoryUrl?: string;
+  branch?: string;
   model: string;
   effort: string;
   approval: string;

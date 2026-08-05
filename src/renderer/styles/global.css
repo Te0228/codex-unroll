@@ -172,12 +172,45 @@ input {
   text-overflow: ellipsis;
 }
 
+/*
+ * 项目身份（§12 Q3）。紧挨文件名，占中间那片本来就空着的地方。
+ * 三段都可能很长，所以整体可压缩（min-width:0）、项目名先吃省略号，
+ * 完整 cwd 走 title。
+ */
+.sb-project {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--fg-muted);
+}
+
+.sb-project-icon {
+  flex: none;
+}
+
+.sb-project-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 分支名是锦上添花：空间不够时先于项目名被砍掉 */
+.sb-branch {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.75;
+}
+
 .sb-meta {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-left: auto;
   color: var(--fg-muted);
+  flex: none;
 }
 
 .sb-sep {
@@ -299,7 +332,7 @@ input {
  * 240px 是这几条数字的唯一来源：组头压到 20px / 11px 字号，
  * 组内缩进只给 6px（8px → 14px）。再多一点就开始吃首条用户消息的位置，
  * 而那才是用户真正用来认会话的东西。
- * 只有一组时组头根本不渲染（见 SessionList.tsx），这套样式只在多组时生效。
+ * 组头一律渲染，哪怕只有一个项目——它是项目身份，不是分组装饰（见 SessionList.tsx）。
  */
 
 .session-group-head {

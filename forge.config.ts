@@ -10,6 +10,9 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // 不带扩展名：Forge 自己按平台补 .icns / .ico。源文件是 assets/icon.svg，
+    // 用 `npm run icon` 重新生成（见 scripts/make-icon.cjs）。
+    icon: 'assets/icon',
   },
   rebuildConfig: {},
   makers: [

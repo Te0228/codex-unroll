@@ -343,6 +343,10 @@ export function summarize(entries: Entry[]): SessionSummary {
         s.cwd = str(p.cwd) || s.cwd;
         s.cliVersion = str(p.cli_version) || s.cliVersion;
         s.provider = str(p.model_provider) || s.provider;
+        // git 远端用来推导「项目」身份（§6.6）。Codex 在磁盘上按日期存，
+        // 不按项目——项目归属只能从这里重建。
+        s.repositoryUrl = str(obj(p.git).repository_url) || s.repositoryUrl;
+        s.branch = str(obj(p.git).branch) || s.branch;
         break;
       case 'turn_context':
         s.model = str(p.model) || s.model;

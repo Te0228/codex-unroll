@@ -36,18 +36,6 @@ export function groupKeyOf(item: SessionListItem): string {
 }
 
 /**
- * 命中是否来自「项目名」而非会话自身的字段。
- * 用来解释「为什么这条被选中」——它自己的文件名和首条消息里可能根本没有这个词。
- */
-export function matchesProjectName(item: SessionListItem, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return false;
-  return [item.project?.label, item.project?.key]
-    .filter(Boolean)
-    .some((s) => String(s).toLowerCase().includes(q));
-}
-
-/**
  * 过滤单个会话。除原有的 path / model / cwd / firstUser 外，
  * **项目名与项目键也参与匹配**——搜 `codex` 要能把该项目下的会话全捞出来，
  * 哪怕这些会话的文件名和首条消息里根本没有 codex。

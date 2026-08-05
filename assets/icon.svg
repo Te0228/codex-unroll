@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    codex-unroll 应用图标。
+
+    形象直接对应产品动作：左边是卷起的卷轴，条目从卷轴下方「摊开」出来。
+    关键是条目要**塞进卷轴底下**（x 起点小于卷轴右缘），否则读起来只是
+    「一根柱子旁边放了几条杠」，不是 unroll 这个动作。
+
+    配色沿用应用自身的语义色（SPEC §6.3）——蓝=输入 / 灰=思考 / 橙=行动 / 绿=输出，
+    图标和界面因此是同一套视觉语言，不是另画的一张贴纸。
+
+    尺寸按 macOS Big Sur+ 规范：1024 画布里内容占 824×824 居中，圆角 185。
+    条目长度不一是刻意的：一眼看出这是日志/时间线，而不是通用列表。
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#232b36"/>
+      <stop offset="1" stop-color="#0b0f14"/>
+    </linearGradient>
+    <!-- 圆柱受光：左侧暗边 → 高光 → 右侧落入阴影 -->
+    <linearGradient id="roll" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#aab6c3"/>
+      <stop offset="0.16" stop-color="#ffffff"/>
+      <stop offset="0.42" stop-color="#eef3f8"/>
+      <stop offset="0.78" stop-color="#c2ccd8"/>
+      <stop offset="1" stop-color="#8d9aa8"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.12"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="barShadow" x="-15%" y="-40%" width="130%" height="180%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <filter id="rollShadow" x="-40%" y="-15%" width="200%" height="130%">
+      <feDropShadow dx="14" dy="0" stdDeviation="16" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- 底：圆角方 -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sheen)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="none"
+        stroke="#ffffff" stroke-opacity="0.10" stroke-width="4"/>
+
+  <!--
+    摊开的时间线。x 起点 300 < 卷轴右缘 360，所以左端被卷轴压住，
+    形成「从卷轴里抽出来」的效果。右端长度不一。
+  -->
+  <g filter="url(#barShadow)">
+    <rect x="300" y="300" width="500" height="58" rx="29" fill="#58a6ff"/>
+    <rect x="300" y="398" width="400" height="58" rx="29" fill="#6e7681"/>
+    <rect x="300" y="496" width="462" height="58" rx="29" fill="#db6d28"/>
+    <rect x="300" y="594" width="356" height="58" rx="29" fill="#3fb950"/>
+  </g>
+
+  <!-- 卷起的卷轴：压在条目左端之上，投影往右打，强化「条目在它下面」 -->
+  <g filter="url(#rollShadow)">
+    <rect x="232" y="248" width="128" height="528" rx="64" fill="url(#roll)"/>
+  </g>
+</svg>

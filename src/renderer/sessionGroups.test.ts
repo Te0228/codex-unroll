@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ProjectRef, SessionListItem } from '../shared/types';
-import { UNKNOWN_KEY, groupKeyOf, groupSessions, matchesProjectName, matchesSession } from './sessionGroups';
+import { UNKNOWN_KEY, groupKeyOf, groupSessions, matchesSession } from './sessionGroups';
 
 const CODEX: ProjectRef = { key: 'git:github.com/openai/codex', label: 'openai/codex', kind: 'git' };
 const DEMO: ProjectRef = { key: 'git:example.com/x/demo', label: 'x/demo', kind: 'git' };
@@ -91,26 +91,6 @@ describe('groupKeyOf · 与 groupSessions 用同一套未知判定', () => {
     const items = [s('/a.jsonl', 1, CODEX), s('/b.jsonl', 2), s('/c.jsonl', 3, SCRATCH)];
     const keys = new Set(groupSessions(items).map((g) => g.key));
     for (const it of items) expect(keys.has(groupKeyOf(it))).toBe(true);
-  });
-});
-
-describe('matchesProjectName · 只看项目名，用来解释「凭什么选中」', () => {
-  it('命中 label 或 key', () => {
-    const it1 = s('/a.jsonl', 1, CODEX);
-    expect(matchesProjectName(it1, 'openai')).toBe(true);
-    expect(matchesProjectName(it1, 'github.com')).toBe(true); // 只在 key 里
-    expect(matchesProjectName(it1, 'GIT:')).toBe(true);
-  });
-
-  it('命中会话自身字段不算数（那种情况不需要额外解释）', () => {
-    const it1 = s('/rollout-hello.jsonl', 1, CODEX, { firstUser: 'hello.txt', model: 'gpt-x' });
-    expect(matchesProjectName(it1, 'hello')).toBe(false);
-    expect(matchesProjectName(it1, 'gpt-x')).toBe(false);
-  });
-
-  it('空查询 / 无 project 一律 false', () => {
-    expect(matchesProjectName(s('/a.jsonl', 1, CODEX), '  ')).toBe(false);
-    expect(matchesProjectName(s('/a.jsonl', 1), 'codex')).toBe(false);
   });
 });
 

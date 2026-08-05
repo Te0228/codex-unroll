@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "lint:fix": "oxlint --fix"
+    "lint:fix": "oxlint --fix",
+    "icon": "electron scripts/make-icon.cjs"
   },
   "keywords": [
     "codex",

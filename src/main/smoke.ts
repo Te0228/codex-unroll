@@ -29,6 +29,25 @@ export async function runSmoke(
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const js = <T>(code: string) => win.webContents.executeJavaScript(code, true) as Promise<T>;
 
+  /**
+   * 轮询等待一个条件成立，而不是「固定 sleep 然后祈祷」。
+   *
+   * 之前用 `await wait(1500)` 当就绪判据，结果是间歇性假失败：
+   * listSessions 是异步 IPC，机器一忙就赶不上，冒烟会报「0 个会话」——
+   * 而应用本身完全正常。发布门禁不能有这种噪音。
+   */
+  const waitFor = async (expr: string, label: string, timeoutMs = 15000) => {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (await js<boolean>(`!!(${expr})`)) return true;
+      if (Date.now() > deadline) {
+        console.error(`[smoke] TIMEOUT 等待 ${label} 超过 ${timeoutMs}ms`);
+        return false;
+      }
+      await wait(100);
+    }
+  };
+
   const results: SmokeResult[] = [];
   const check = (name: string, expected: unknown, actual: unknown) => {
     const ok = JSON.stringify(expected) === JSON.stringify(actual);
@@ -41,10 +60,13 @@ export async function runSmoke(
   };
 
   await new Promise<void>((r) => win.webContents.once('did-finish-load', () => r()));
-  await wait(1500);
 
   // ── 第 1 步：左栏列出 3 个夹具会话 ────────────────────────────────
+  await waitFor(`document.querySelector('.dropzone')`, '空状态渲染');
   await shot('1-empty');
+  // 会话扫描是异步 IPC。不等它落地就断言，测的是竞态不是功能。
+  await waitFor(`document.querySelectorAll('.session-item').length`, '会话列表加载');
+
   check('F23 空状态拖放区', true, await js(`!!document.querySelector('.dropzone')`));
   check('§14.6-1 列出 3 个会话', 3, await js(`document.querySelectorAll('.session-item').length`));
 
@@ -65,7 +87,7 @@ export async function runSmoke(
 
   // ── 第 2 步：打开 01 号夹具，核对 §14.2 的期望值 ──────────────────
   await js(`Array.from(document.querySelectorAll('.session-item')).find(e=>e.textContent.includes('hello.txt'))?.click()`);
-  await wait(800);
+  await waitFor(`document.querySelectorAll('.row').length`, '时间线渲染');
   await shot('2-timeline');
 
   check('F1 时间线 19 行', 19, await js(`document.querySelectorAll('.row').length`));
@@ -79,7 +101,7 @@ export async function runSmoke(
 
   // ── 第 3 步：选中索引 11（apply_patch），核对两层下钻 ──────────────
   await js(`document.querySelectorAll('.row')[11]?.click()`);
-  await wait(600);
+  await waitFor(`document.querySelector('.detail')`, '详情面板出现');
   await shot('3-detail');
   check('F7 面板标题 apply_patch', true, await js(
     `!!document.querySelector('.detail')?.innerText?.includes('apply_patch')`));
@@ -90,7 +112,7 @@ export async function runSmoke(
 
   // ── 第 4 步：03 号夹具，全条目展开后断言零密钥泄漏 ────────────────
   await js(`Array.from(document.querySelectorAll('.session-item')).find(e=>e.textContent.includes('key'))?.click()`);
-  await wait(800);
+  await waitFor(`document.querySelectorAll('.row').length===13`, '03 号夹具渲染');
   await js(`document.querySelectorAll('.row').forEach(r=>r.click())`);
   await js(`document.querySelectorAll('.detail [aria-expanded]').forEach(b=>b.click())`);
   await wait(400);
