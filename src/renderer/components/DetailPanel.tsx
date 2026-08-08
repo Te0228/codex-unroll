@@ -119,7 +119,7 @@ export function DetailPanel({ entry, summary, onClose, onResizeStart, searchRef 
           </p>
         )}
 
-        <RawJson pretty={entry.rawPretty} />
+        <RawJson pretty={entry.rawPretty} value={entry.raw} query={query} />
       </div>
     </aside>
   );

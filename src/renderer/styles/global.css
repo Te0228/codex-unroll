@@ -688,6 +688,145 @@ mark {
   overflow-wrap: anywhere;
 }
 
+/* 树 / 原文 切换 + 全部展开/折叠。两个视图共用同一块画布，尺寸约束也一样 */
+.rawjson-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+}
+
+.rawjson-bar .spacer {
+  margin-left: auto;
+}
+
+.rawjson-views {
+  display: flex;
+  gap: 4px;
+}
+
+.rawjson-view {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.rawjson-view.on {
+  background: var(--sel);
+  color: var(--fg);
+}
+
+/* 搜索够不到原始 JSON 时的去路提示 */
+.rawjson-hint {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.rawjson-tree {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-sunken);
+  font-size: 11px;
+  max-height: 50vh;
+  overflow: auto;
+}
+
+/* ── JSON 树：react-json-view-lite 的类名槽位（§6.1 第二层）────────
+ *
+ * 这些 class 是通过库的 `style` prop 传进去的（它收的是**类名对象**），
+ * 而不是反过来在这里覆盖它的哈希类名（`._2T6PJ` 那种会随库构建变）。
+ * 颜色一律绑到 §6.3 的六组语义色变量，所以深浅色跟着
+ * prefers-color-scheme 自动走，不需要运行时切 defaultStyles / darkStyles。
+ *
+ * ⚠️ 行内 style 一律不用：生产 CSP 是 `style-src 'self'`。
+ */
+
+.jt {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  line-height: 1.5;
+  /* 库的 container-base 提供的换行行为，换成我们自己的 container 后要补上——
+     apply_patch 的 patch 文本靠这条保留换行 */
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.jt-key {
+  color: var(--fg);
+  font-weight: 600;
+  margin-right: 5px;
+}
+
+.jt-key-click {
+  cursor: pointer;
+}
+
+.jt-punct {
+  color: var(--fg-muted);
+  margin-right: 5px;
+  font-weight: bold;
+}
+
+/* 图标类被换成我们自己的，字形要在这里给（原库靠 ::after content） */
+.jt-icon {
+  display: inline-block;
+  width: 1em;
+  margin-right: 5px;
+  cursor: pointer;
+  color: var(--fg-muted);
+  user-select: none;
+}
+
+.jt-icon-expand::after {
+  content: '\25B8';
+}
+
+.jt-icon-collapse::after {
+  content: '\25BE';
+}
+
+.jt-collapsed {
+  margin-right: 5px;
+  cursor: pointer;
+  color: var(--fg-muted);
+}
+
+.jt-collapsed::after {
+  content: '…';
+}
+
+/* 值按类型着色，复用 §6.3 的六组语义色，不引入第二套配色 */
+.jt-string {
+  color: var(--g-output);
+  /* base_instructions 单值 22 KB：限高 + 内部滚动，**不在 JS 里截断**——
+     截断了就没法完整复制了 */
+  display: inline-block;
+  vertical-align: top;
+  max-width: 100%;
+  max-height: 30vh;
+  overflow: auto;
+}
+
+.jt-number {
+  color: var(--g-act);
+}
+
+.jt-boolean {
+  color: var(--g-input);
+}
+
+.jt-null,
+.jt-other {
+  color: var(--g-meta);
+}
+
 /* ── 底部状态栏：6 组过滤 + 计数 + 搜索 + 跟随（§6.1，26px）────────── */
 
 .filterbar {

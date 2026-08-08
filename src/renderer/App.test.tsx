@@ -328,17 +328,35 @@ describe('详情面板（§6.1 / F6–F13）', () => {
     expect(screen.queryByTestId('expand-all')).toBeNull();
   });
 
-  it('F13 · 下钻恰好两层：时间线行没有展开控件，面板里只有「原始 JSON」一个', async () => {
+  /**
+   * F13 的原始断言是「面板里 aria-expanded 的元素恰好 1 个」。
+   * JSON 树视图会引入大量 aria-expanded 节点，所以断言改成
+   * 「详情面板里**顶层的**可折叠区段恰好 1 个」（打了 data-drill 标记的那个）。
+   *
+   * ⚠️ 这不是放水。下钻层级数的是「时间线选中 → 详情面板 + 原始 JSON」这两跳；
+   *    树内部的展开是「原始 JSON」这一层内部的导航，性质等同于时间线内部可以滚动。
+   *    下面显式断言：所有非顶层的 aria-expanded 节点都在 rawjson-body 里面，
+   *    也就是说面板里确实没有第三个独立的下钻区段。
+   */
+  it('F13 · 下钻恰好两层：详情面板里顶层可折叠区段只有「原始 JSON」一个', async () => {
     const { container } = await open();
     for (const r of rows()) expect(r.getAttribute('aria-expanded')).toBeNull();
     fireEvent.click(rowAt(11));
-    // 只看「时间线 + 详情面板」这条下钻路径。左栏组头也是 aria-expanded，
-    // 但它属于会话导航，不是条目的第三层。
-    const drill = [...container.querySelectorAll('[aria-expanded]')].filter(
-      (el) => !el.closest('.sessions'),
+
+    const drills = () => [...container.querySelectorAll('.detail [data-drill]')];
+    expect(drills()).toHaveLength(1);
+    expect((drills()[0] as HTMLElement).dataset.testid).toBe('rawjson-toggle');
+
+    // 展开原始 JSON：顶层区段数**不变**，新增的 aria-expanded 全在树内部
+    fireEvent.click(screen.getByTestId('rawjson-toggle'));
+    expect(drills()).toHaveLength(1);
+    const inner = [...container.querySelectorAll('.detail [aria-expanded]')].filter(
+      (el) => (el as HTMLElement).dataset.drill == null,
     );
-    expect(drill).toHaveLength(1);
-    expect((drill[0] as HTMLElement).dataset.testid).toBe('rawjson-toggle');
+    expect(inner.length).toBeGreaterThan(0);
+    for (const el of inner) {
+      expect(el.closest('[data-testid="rawjson-body"]')).not.toBeNull();
+    }
   });
 });
 
@@ -859,6 +877,170 @@ describe('会话列表按项目分组（§12 Q3）', () => {
     expect(screen.queryByTestId('session-list')).toBeNull();
     fireEvent.keyDown(window, { key: '1', metaKey: true });
     expect(await screen.findByTestId('session-list')).toBeTruthy();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+describe('原始 JSON 的树视图（§6.1 第二层 / F19）', () => {
+  /**
+   * 树由 react-json-view-lite 渲染，所以断言打在它的输出上：
+   * 每个可展开节点是 role="treeitem"，里面第一个 .jt-key 是本节点的键，
+   * role="button" 的那个 span 是展开/折叠开关。
+   */
+  async function openRaw(file: string, index: number) {
+    await open(file);
+    fireEvent.click(rowAt(index));
+    fireEvent.click(screen.getByTestId('rawjson-toggle'));
+    return screen.getByTestId('rawjson-body');
+  }
+
+  const items = () => [...screen.getByTestId('rawjson-body').querySelectorAll('[role="treeitem"]')];
+
+  function nodeByKey(key: string): HTMLElement {
+    const el = items().find((i) => i.querySelector('.jt-key')?.textContent === `${key}:`);
+    if (!el) throw new Error(`树里没有键 ${key}`);
+    return el as HTMLElement;
+  }
+
+  const toggleOf = (node: HTMLElement) => node.querySelector('[role="button"]') as HTMLElement;
+
+  it('展开后默认是树视图，不是原文', async () => {
+    await openRaw(F01, 11);
+    expect(screen.getByRole('tree')).toBeTruthy();
+    expect(screen.getByTestId('rawjson-view-tree').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('rawjson-view-text').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('默认展开 2 层：payload 的直接子项可见，更深的默认折叠', async () => {
+    const body = await openRaw(F01, 0); // session_meta，最大的一条
+    // 深度 1 的 payload 展开 → 深度 2 的键看得见
+    expect(body.textContent).toContain('cli_version');
+    // 深度 2 的容器（payload.git）折叠
+    expect(nodeByKey('git').getAttribute('aria-expanded')).toBe('false');
+    expect(body.textContent).not.toContain('commit_hash');
+  });
+
+  it('点击节点可折叠 / 展开', async () => {
+    const body = await openRaw(F01, 0);
+    fireEvent.click(toggleOf(nodeByKey('git')));
+    expect(nodeByKey('git').getAttribute('aria-expanded')).toBe('true');
+    expect(body.textContent).toContain('commit_hash');
+
+    fireEvent.click(toggleOf(nodeByKey('git')));
+    expect(nodeByKey('git').getAttribute('aria-expanded')).toBe('false');
+    expect(body.textContent).not.toContain('commit_hash');
+  });
+
+  it('「全部展开」把深层节点也打开，「全部折叠」收回去', async () => {
+    const body = await openRaw(F01, 0);
+    expect(body.textContent).not.toContain('commit_hash');
+
+    fireEvent.click(screen.getByTestId('rawjson-expand-all'));
+    expect(screen.getByTestId('rawjson-body').textContent).toContain('commit_hash');
+
+    fireEvent.click(screen.getByTestId('rawjson-collapse-all'));
+    const after = screen.getByTestId('rawjson-body').textContent ?? '';
+    expect(after).not.toContain('commit_hash');
+    expect(after).not.toContain('cli_version'); // 连第二层都收了
+  });
+
+  /**
+   * ★ 二次解析（F19）。02 号夹具索引 9 是 function_call，
+   *   arguments = `{"cmd": "ls -la"}` —— 一个 **JSON 字符串**。
+   *   库不管这件事，是我们在喂数据前做的预处理。
+   */
+  it('function_call.arguments 被二次解析成子树', async () => {
+    const body = await openRaw(F02, 9);
+    expect(body.textContent).toContain('cmd');
+    expect(body.textContent).toContain('ls -la');
+    // 转义后的原样字符串不该出现在树里
+    expect(body.textContent).not.toContain('\\"cmd\\"');
+    // arguments 现在是个可展开节点，而不是一行字符串
+    expect(nodeByKey('arguments').getAttribute('aria-expanded')).toBeTruthy();
+  });
+
+  /**
+   * ⚠️ 另一条工具调用路径：01 号索引 11 的 custom_tool_call.input 是**纯文本 patch**，
+   *   不能当 JSON 解析，且换行要原样保留。
+   */
+  it('custom_tool_call.input 不被误解析，换行原样保留', async () => {
+    const body = await openRaw(F01, 11);
+    const input = nodeByKey('input');
+    // 它是叶子（字符串），不是可展开节点
+    expect(input.getAttribute('aria-expanded')).toBeNull();
+    const val = input.querySelector('.jt-string')!.textContent ?? '';
+    expect(val).toContain('*** Begin Patch');
+    expect(val).toContain('*** End Patch');
+    expect(val).toContain('\n'); // 换行没被压成一行，也没变成 \n 字面量
+    expect(body.textContent).not.toContain('\\n');
+  });
+
+  /**
+   * 超长字符串**不在 JS 里截断**（截断了就没法完整复制），
+   * 靠 CSS 给值节点限高 + 内部滚动。这里钉死「DOM 里是全文」。
+   */
+  it('超长字符串完整进 DOM，不做 JS 截断', async () => {
+    await openRaw(F02, 13); // agent_message，payload.message 长 351 字符
+    const val = nodeByKey('message').querySelector('.jt-string')!.textContent ?? '';
+    expect(val.length).toBe(351 + 2); // 库给字符串加了一对引号
+    expect(val).not.toContain('…');
+  });
+
+  it('两视图可切换，原文视图内容仍等于 rawPretty', async () => {
+    await openRaw(F01, 11);
+    fireEvent.click(screen.getByTestId('rawjson-view-text'));
+    const pre = screen.getByTestId('rawjson-body');
+    expect(pre.tagName).toBe('PRE');
+    expect(screen.queryByRole('tree')).toBeNull();
+
+    // 原文 = shared/rollout 生成的 rawPretty（脱敏后的 JSON.stringify(raw, null, 2)）
+    const expected = JSON.stringify(JSON.parse(pre.textContent!), null, 2);
+    expect(pre.textContent).toBe(expected);
+    expect(pre.textContent).toContain('*** Begin Patch');
+
+    fireEvent.click(screen.getByTestId('rawjson-view-tree'));
+    expect(screen.getByRole('tree')).toBeTruthy();
+  });
+
+  /**
+   * 面板搜索不覆盖原始 JSON，树还会把值藏进折叠节点——
+   * 相对原来那堵 <pre> 是能力倒退，所以有搜索词时必须给出去路。
+   */
+  it('面板里有搜索词时，树视图给出「去原文视图」的提示', async () => {
+    await openRaw(F01, 11);
+    expect(screen.queryByTestId('rawjson-search-hint')).toBeNull();
+
+    fireEvent.change(screen.getByTestId('detail-search'), { target: { value: 'Patch' } });
+    expect(screen.getByTestId('rawjson-search-hint')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('rawjson-goto-text'));
+    expect(screen.getByTestId('rawjson-body').tagName).toBe('PRE');
+    // 切过去之后提示自己消失（问题已经解决了）
+    expect(screen.queryByTestId('rawjson-search-hint')).toBeNull();
+  });
+
+  it('B7 · 两个视图里都搜不到完整 fake key（脱敏覆盖 raw 与 rawPretty）', async () => {
+    const body = await openRaw(F03, 0); // session_meta，两个假 key 都在这条
+    expect(body.textContent).toContain('••••ab12');
+    expect(body.textContent).not.toContain('FAKEkeyDoNotUse');
+    expect(body.textContent).not.toContain('FAKEsecond');
+
+    fireEvent.click(screen.getByTestId('rawjson-view-text'));
+    const pre = screen.getByTestId('rawjson-body');
+    expect(pre.textContent).toContain('••••ab12');
+    expect(pre.textContent).not.toContain('FAKEkeyDoNotUse');
+    expect(pre.textContent).not.toContain('FAKEsecond');
+    expect(document.body.textContent).not.toContain('FAKEkeyDoNotUse');
+  });
+
+  it('坏行（_parse_error）也能进树，不白屏', async () => {
+    // 03 号夹具第 6 行是故意的坏 JSON，归一化成 _parse_error 条目
+    await open(F03);
+    const bad = rows().find((r) => (r as HTMLElement).dataset.kind === 'error');
+    expect(bad).toBeTruthy();
+    fireEvent.click(bad!);
+    fireEvent.click(screen.getByTestId('rawjson-toggle'));
+    expect(screen.getByTestId('rawjson-body').textContent).toBeTruthy();
   });
 });
 

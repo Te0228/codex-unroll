@@ -54,7 +54,14 @@ export async function runSmoke(
     results.push({ name, expected, actual, ok });
     console.log(`[smoke] ${ok ? 'PASS' : 'FAIL'} ${name}`, ok ? '' : `expected=${JSON.stringify(expected)} actual=${JSON.stringify(actual)}`);
   };
+  /**
+   * capturePage 拿的是最近**已绘制**的一帧，DOM 更新后立刻截会抓到旧画面
+   * （实测出现过「断言查到树节点、截图里却还是折叠态」）。
+   * 先等两帧再截。断言读的是 DOM 状态、不受此影响，这里只为让截图可信。
+   */
   const shot = async (name: string) => {
+    await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
+    await wait(150);
     const img = await win.webContents.capturePage();
     await fs.writeFile(path.join(outDir, `${name}.png`), img.toPNG());
   };
@@ -107,7 +114,30 @@ export async function runSmoke(
     `!!document.querySelector('.detail')?.innerText?.includes('apply_patch')`));
   check('F8 内容以 *** Begin Patch 开头', true, await js(
     `!!document.querySelector('.detail')?.innerText?.includes('*** Begin Patch')`));
-  check('F13 恰好两层下钻', 1, await js(`document.querySelectorAll('.detail [aria-expanded]').length`));
+  // F13：层级看的是「顶层可折叠区段」，树内部节点的展开属于本层内部导航，不计（§14.8）
+  check('F13 恰好两层下钻', 1, await js(`document.querySelectorAll('.detail [data-drill]').length`));
+
+  // ── §6.7 原始 JSON 树视图（react-json-view-lite）在严格 CSP 下的实测 ──
+  await js(`document.querySelector('[data-testid="rawjson-toggle"]')?.click()`);
+  await waitFor(`document.querySelector('[data-testid="rawjson-body"]')`, '原始 JSON 展开');
+  check('§6.7 树已渲染（库在 CSP 下存活）', true, await js(
+    `document.querySelectorAll('[data-testid="rawjson-body"] [role="treeitem"], [data-testid="rawjson-body"] [role="tree"]').length > 0`));
+  // 库的样式来自打包进来的 CSS 文件；若被 CSP 拦掉，节点会退化成无缩进的裸文本。
+  // 探的是树内部真实节点的缩进，不是外层容器。
+  check('§6.7 库的结构样式已生效（缩进存在）', true, await js(
+    `(()=>{const items=[...document.querySelectorAll('[data-testid="rawjson-body"] [role="treeitem"]')];
+       if(items.length===0) return false;
+       return items.some(e=>parseFloat(getComputedStyle(e).paddingLeft||'0')>0
+                          || parseFloat(getComputedStyle(e).marginLeft||'0')>0)})()`));
+  // 我们自己接的六组语义色是否真的落到值节点上
+  check('§6.7 值节点着色生效', true, await js(
+    `(()=>{const el=document.querySelector('[data-testid="rawjson-body"] .jt-string, [data-testid="rawjson-body"] .jt-number');
+       if(!el) return false;
+       const c=getComputedStyle(el).color;
+       return !!c && c!=='rgba(0, 0, 0, 0)' && c!=='rgb(0, 0, 0)'})()`));
+  check('§6.7 树里也搜不到明文 key', false, await js(
+    `document.querySelector('[data-testid="rawjson-body"]').innerText.includes('FAKEkeyDoNotUse')`));
+  await shot('5-jsontree');
   check('F12 body 不滚动', true, await js(`document.body.scrollHeight<=document.body.clientHeight`));
 
   // ── 第 4 步：03 号夹具，全条目展开后断言零密钥泄漏 ────────────────

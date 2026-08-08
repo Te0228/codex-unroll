@@ -10,8 +10,9 @@
  *    DevTools 里量所有 .row 的 offsetHeight 与 .row-preview 的 scrollWidth）。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const cssPath = fileURLToPath(new URL('./global.css', import.meta.url));
@@ -79,6 +80,46 @@ describe('F12 · 详情面板独立滚动，主区不滚', () => {
     expect(body).toMatch(/max-height:\s*\d+vh/);
     expect(body).toContain('overflow: auto');
   });
+
+  it('树视图与原文视图共用同一套尺寸约束', () => {
+    const body = rule('.rawjson-tree');
+    expect(body).toMatch(/max-height:\s*\d+vh/);
+    expect(body).toContain('overflow: auto');
+  });
+});
+
+/**
+ * 树由 react-json-view-lite 渲染，但**颜色是我们自己的 class**——
+ * 通过它的 `style` prop（收类名对象）传进去，而不是在这里覆盖它的哈希类名。
+ * 所以这些 class 必须存在且绑到六组语义色，否则树在生产里就是一片黑白。
+ */
+describe('F19 · JSON 树的配色绑在我们自己的 class 上', () => {
+  it('四种值类型各有一个颜色 class，且复用六组语义色变量', () => {
+    expect(rule('.jt-string')).toContain('color: var(--g-output)');
+    expect(rule('.jt-number')).toContain('color: var(--g-act)');
+    expect(rule('.jt-boolean')).toContain('color: var(--g-input)');
+    expect(css).toMatch(/\.jt-null,\s*\n\.jt-other \{\s*\n\s*color: var\(--g-meta\)/);
+  });
+
+  it('容器保留 pre-wrap —— patch 文本的换行靠这条（换掉库的 container 后要自己补）', () => {
+    const body = rule('.jt');
+    expect(body).toContain('white-space: pre-wrap');
+    expect(body).toContain('word-wrap: break-word');
+  });
+
+  /** 22 KB 的 base_instructions：限高 + 内部滚动，**不在 JS 里截断**（截了就没法完整复制） */
+  it('超长字符串靠 CSS 限高 + 内部滚动，不靠 JS 截断', () => {
+    const body = rule('.jt-string');
+    expect(body).toMatch(/max-height:\s*\d+vh/);
+    expect(body).toContain('overflow: auto');
+    expect(body).toContain('display: inline-block'); // span 要 inline-block 才吃 max-height
+  });
+
+  /** 图标 class 被换成我们自己的，▸ / ▾ 的字形就得自己给 */
+  it('展开/折叠图标的字形在 CSS 里', () => {
+    expect(rule('.jt-icon-expand::after')).toContain("content: '\\25B8'");
+    expect(rule('.jt-icon-collapse::after')).toContain("content: '\\25BE'");
+  });
 });
 
 describe('F6 · 详情面板未选中时不占宽度', () => {
@@ -145,6 +186,33 @@ describe('§6.3 · 六组色值在深浅两套主题里都齐全', () => {
       const cls = `.g-${v.replace('--g-', '')}`;
       expect(rule(cls)).toContain(`color: var(${v})`);
     }
+  });
+});
+
+/**
+ * §9 CSP · react-json-view-lite 的产物必须保持「无运行时样式注入」。
+ *
+ * 选它就是因为实测 dist 里行内 style / insertRule / cssText 均为 0 处
+ * （纯 CSS Modules + 自带 index.css）。这条测试把那个前提钉死：
+ * 哪天升级版本引入了 emotion 之类的运行时注入，这里先红，
+ * 而不是等打包后在生产 CSP 下变成一棵没有颜色的白板树。
+ */
+describe('§9 CSP · JSON 树库的产物不注入样式', () => {
+  const require_ = createRequire(import.meta.url);
+  const dist = dirname(require_.resolve('react-json-view-lite'));
+
+  for (const file of ['index.js', 'index.modern.js']) {
+    it(`${file} 里没有行内 style / insertRule / cssText`, () => {
+      const js = readFileSync(join(dist, file), 'utf8');
+      expect(js).not.toMatch(/["']style["']\s*:/); // createElement 的 style prop
+      expect(js).not.toContain('insertRule');
+      expect(js).not.toContain('cssText');
+      expect(js).not.toContain('styleSheet');
+    });
+  }
+
+  it('样式来自打包进来的 CSS 文件', () => {
+    expect(readFileSync(join(dist, 'index.css'), 'utf8').length).toBeGreaterThan(0);
   });
 });
 

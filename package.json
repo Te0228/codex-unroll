@@ -61,6 +61,7 @@
     "electron": "43.2.0",
     "jsdom": "^29.1.1",
     "oxlint": "^1.77.0",
+    "react-json-view-lite": "^2.5.0",
     "typescript": "^7.0.2",
     "vite": "^5.4.21",
     "vitest": "^3.2.7"
