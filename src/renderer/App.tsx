@@ -10,9 +10,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import type { DisplayGroup, Entry, SessionSummary } from '../shared/types';
 import { GROUPS, kindToGroup } from '../shared/groups';
 import { summarize, toEntries } from '../shared/rollout';
+import { buildGraph } from '../shared/steps';
 import { StatusBar } from './components/StatusBar';
 import { SessionList } from './components/SessionList';
-import { Timeline } from './components/Timeline';
+import { MainPane } from './components/MainPane';
 import { DetailPanel } from './components/DetailPanel';
 import { FilterBar } from './components/FilterBar';
 import { DropZone } from './components/DropZone';
@@ -20,6 +21,7 @@ import { useSessions } from './hooks/useSessions';
 import { useSelection } from './hooks/useSelection';
 import { useFollow } from './hooks/useFollow';
 import { useResizable } from './hooks/useResizable';
+import { useViewMode } from './hooks/useViewMode';
 import { basename, matchesQuery } from './format';
 
 interface Doc {
@@ -81,8 +83,17 @@ export function App() {
     [entries, active, query],
   );
 
+  /**
+   * ★ 图从**全量** entries 切，不是从 visible 切（§6.8）。
+   * Step 边界靠 token_count 划，而 token_count 属于「元信息」组——
+   * 用户一关这一组，结构就会当场散架。过滤只决定哪些行渲染出来。
+   */
+  const graph = useMemo(() => buildGraph(entries), [entries]);
+  const visibleIndices = useMemo(() => new Set(visible.map((e) => e.index)), [visible]);
+
   const selection = useSelection(visible);
   const panel = useResizable();
+  const viewMode = useViewMode();
 
   // ── 打开 ────────────────────────────────────────────────────────────
   const openPath = useCallback(
@@ -218,13 +229,18 @@ export function App() {
         selection.move(-1);
         return;
       }
+      if (e.key === 'g') {
+        // 图 ⇄ 列表（§6.8）。用 g 而不是 ⌘ 组合：⌘1/⌘2 已经是折叠左右栏了
+        viewMode.toggle();
+        return;
+      }
       if (e.key === 'r') {
         reloadSessions();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [openDialog, selection, reloadSessions, toggleRight]);
+  }, [openDialog, selection, reloadSessions, toggleRight, viewMode]);
 
   // ── 拖放（窗口任意位置，F24）───────────────────────────────────────
   const onDragOver = useCallback((e: DragEvent) => {
@@ -290,8 +306,13 @@ export function App() {
         )}
 
         {doc ? (
-          <Timeline
-            entries={visible}
+          <MainPane
+            view={viewMode.view}
+            onViewChange={viewMode.setView}
+            graph={graph}
+            total={entries.length}
+            visible={visible}
+            visibleIndices={visibleIndices}
             selectedIndex={selection.selectedIndex}
             onSelect={selection.toggle}
           />

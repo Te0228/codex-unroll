@@ -7,7 +7,7 @@ Turn `~/.codex/sessions/**/rollout-*.jsonl` into a searchable timeline you can a
 
 [English](#english) · [中文](#中文)
 
-![codex-unroll 时间线视图](./docs/screenshot-timeline.png)
+![codex-unroll 图视图](./docs/screenshot-graph.png)
 
 ---
 
@@ -34,6 +34,13 @@ file the moment it hits one malformed line.
 This is not a long-list problem. It is a *few gigantic objects* problem.
 
 ### What it does
+
+- **Graph view** — the session rebuilt as Codex actually executes it: `Session ▸ Turn ▸ Step`,
+  a vertical chain. Each Step is one model request; a Step that calls a tool feeds the result back
+  and the loop continues (▶), a Step that only replies exits the loop (●). That is the ReAct loop,
+  made visible. Press `g` to switch between graph and list.
+
+![时间线视图](./docs/screenshot-timeline.png)
 
 - **Timeline** — one fixed-height line per record, never wrapped. The whole session structure fits on one screen.
 - **Detail panel** — select a row, read the full content on the right with its own scrollbar. Exactly two levels of drill-down, no deeper.
@@ -88,8 +95,9 @@ Requires Node 20+. macOS first; Windows and Linux should work but are untested.
 
 ### Status
 
-**v0.1 feature-complete.** 321 unit tests, 100% line coverage on the normalization layer,
-end-to-end smoke suite passing 17/17 against both the dev build and the packaged app.
+**v0.1 feature-complete; v0.2 adds the graph view.** 401 unit tests, 100% line coverage on the
+normalization layer, end-to-end smoke suite passing 30/30 against both the dev build and the
+packaged app.
 
 ---
 
@@ -141,6 +149,16 @@ Codex CLI 每次会话都会写一份完整的执行轨迹 JSONL：
 
 ### 功能
 
+- **图视图** — 按 Codex 真实的执行层级重建会话：`Session ▸ Turn ▸ Step` 竖向链。
+  一个 Step = 一次模型请求；调了工具就把结果写回历史、循环继续（▶），
+  只回消息就出环（●）。turn loop 是个 ReAct 循环，这样看最直观。`g` 键在图/列表间切换。
+
+  层级取自 Codex 源码 `codex-rs/core/src/tasks/mod.rs`——注意 **Task 和 Turn 是同一层**。
+  Step 边界靠 `token_count` 事件推断（每次模型请求后的用量上报），4 份样本全部吻合；
+  推断不出来就整轮退化成一个未收尾的 Step，**内容一条不少**。
+
+![时间线视图](./docs/screenshot-timeline.png)
+
 - **时间线** — 每条固定一行，一屏看完整场会话的结构
 - **详情面板** — 选中条目后在右侧展开完整内容，独立滚动
 - **分类过滤** — 输入 / 思考 / 行动 / 输出 / 元信息 / 异常，六组，带计数
@@ -174,7 +192,7 @@ Electron Forge · Vite · React 19 · TypeScript · Vitest · oxlint
 npm install
 npm start                          # 开发模式
 CODEX_HOME=$(pwd)/test npm start   # 用测试夹具当数据源
-npm test                           # 321 条单测
+npm test                           # 401 条单测
 npm run test:cov                   # 覆盖率（src/shared/ 门槛 90%）
 npm run typecheck
 npm run lint                       # oxlint

@@ -29,12 +29,13 @@ M2   shared/rollout.ts + 单测（§14.2 共 40 条）    ✅ 完成，40/40 绿
 M3   主进程 IPC（§14.3 E1–E7）+ 跟随（G1–G7）      ✅ 完成
 M4   React UI（§14.4 F1–F24）                     ✅ 完成
 M5   实时跟随                                     ✅ 完成
-M6   端到端冒烟（§14.6）已脚本化                    ✅ 13/13 绿
+M6   端到端冒烟（§14.6）已脚本化                    ✅ 30/30 绿
 M7   打包分发                                     ✅ zip 产物可跑
+────────────────────────────────────────────────
+v0.2 主区「图」视图 Session▸Turn▸Step（§6.8）      ✅ §14.9 共 52 条
 ```
 
-**v0.1 功能完整。** 单测 254 条全绿，`src/shared/` 覆盖率 100% 行 / 92.63% 分支。
-端到端冒烟对**开发模式和打包产物各跑一遍**，都是 13/13。
+**v0.1 功能完整，v0.2 加了图视图。** 单测 **401 条**全绿，端到端冒烟 30/30。
 
 ### 已装好的依赖
 
@@ -109,6 +110,37 @@ M7   打包分发                                     ✅ zip 产物可跑
 
 **这是真实差异，不是笔误。** 验收时不要"顺手改成一致"。
 
+### ★ `role === "user"` 不等于"人打的字"
+
+夹具 01 的索引 3 是 Codex 注入的 **AGENTS.md 内容**，落盘也带 `role: "user"`：
+
+```jsonc
+{ "type": "response_item",
+  "payload": { "type": "message", "role": "user",
+               "content": [{ "text": "# AGENTS.md instructions for /Users/dev/…" }] } }
+```
+
+唯一可靠的"人打的字"信号是 **`event_msg/user_message`**。
+而且同一句输入常常**落两份**（事件一份 + `response_item` 一份），两份都显就是重复噪音。
+
+规则（§6.8.7）：**有事件那份就只认它，一份都没有才退回 `response_item` + `role=user`**。
+`src/shared/steps.ts` 的 `isUserInput` 和 `StepGraph` 的 `hasEventUser` 分支就是这件事。
+
+### ★ Step 边界靠 `token_count`，所以图不能从过滤后的条目切
+
+`event_msg/token_count` 是每次模型请求后的用量上报，天然是 Step 收尾——4 份样本全吻合。
+但它属于**元信息**组，用户一关这一组，Step 边界就没了。
+
+所以 `buildGraph` 吃的必须是**全量** entries，过滤只决定哪些行渲染出来（§6.8.5 第 3 条）。
+验收 G7 专门查这个。
+
+### ★ Task 和 Turn 是同一层
+
+`codex-rs/core/src/tasks/mod.rs` 文件头原话：「协议里对外说的 Turn，在 core 内部的实现
+就是这里的 Task。**它们是同一个东西，不是两层。**」
+
+照着 `Task → Turn → Step` 画三层，中间那层永远是空的。真实层级见 §6.8.1。
+
 ---
 
 ## 3. 命令
@@ -116,7 +148,7 @@ M7   打包分发                                     ✅ zip 产物可跑
 ```bash
 npm start            # electron-forge start（Vite HMR）
 npm run typecheck    # tsc --noEmit
-npm test             # vitest run，254 条
+npm test             # vitest run，401 条
 npm test -- rollout  # 单文件
 npm run test:cov     # 覆盖率（src/shared/ 门槛 90%）
 npm run make         # 打包 zip

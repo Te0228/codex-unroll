@@ -906,3 +906,301 @@ mark {
 .fb-follow.live {
   color: var(--g-output);
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   主区「图」视图（§6.8）：Session ▸ Turn ▸ Step 的竖向链
+
+   ★ 三条不要改回去的约束：
+     1. 块里的行仍然是 .row，固定单行高、永不换行——§6.0「少量巨型对象」
+        的前提在图里同样成立，块只承载结构。
+     2. 整块 overflow-x: hidden，11 459 字符的条目不能把布局撑破（F3）。
+     3. 颜色只承载语义，符号 ▶●· 独立于颜色（F21）——灰度下靠符号区分收场。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* 中栏 = 24px 视图条 + 本体，两者都不许把外层撑出滚动条 */
+.main {
+  display: grid;
+  grid-template-rows: 24px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.viewbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sunken);
+  font-size: 11px;
+  color: var(--fg-muted);
+  overflow: hidden;
+}
+
+.viewbar .spacer {
+  flex: 1 1 auto;
+}
+
+.viewbar-shape {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewswitch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.viewswitch-btn {
+  padding: 0 8px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  background: transparent;
+}
+
+.viewswitch-btn + .viewswitch-btn {
+  border-left: 1px solid var(--border);
+}
+
+.viewswitch-btn:hover {
+  background: var(--hover);
+}
+
+.viewswitch-btn.on {
+  background: var(--sel);
+  color: var(--fg);
+}
+
+/* ── 图本体 ──────────────────────────────────────────────────────── */
+
+.graph {
+  min-height: 0;
+  /* ★ 纵向滚，横向绝不滚：F3 在图视图下同样成立 */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 10px 24px;
+}
+
+.graph-inner {
+  min-width: 0;
+}
+
+.graph-pre {
+  margin-bottom: 8px;
+  opacity: 0.85;
+}
+
+/* ── Turn：一整个色带外框 ────────────────────────────────────────── */
+
+.turn {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* 没等到 task_complete：左缘用虚线提示「还没收尾」，不靠颜色单独表意 */
+.turn[data-status='open'] {
+  border-style: dashed;
+}
+
+.turn-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  height: 24px;
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  overflow: hidden;
+}
+
+.turn-head .spacer {
+  flex: 1 1 auto;
+}
+
+.turn-no {
+  font-weight: 600;
+  color: var(--g-input);
+  white-space: nowrap;
+}
+
+.turn-config,
+.turn-steps {
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.turn-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  height: 22px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sunken);
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-open {
+  color: var(--g-act);
+}
+
+/* ── Turn 前言：用户消息常显，其余上下文收起 ─────────────────────── */
+
+.turn-pre {
+  padding: 2px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.turn-pre-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  height: var(--row-h);
+  padding: 0 10px;
+  text-align: left;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.turn-pre-toggle:hover {
+  background: var(--hover);
+}
+
+/* ── Step 块 ─────────────────────────────────────────────────────── */
+
+.steps {
+  padding: 6px 8px;
+}
+
+.step {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* 收场用左缘粗边表达，和块头的符号双重编码，灰度下也分得开 */
+.step[data-outcome='act'] {
+  border-left: 3px solid var(--g-act);
+}
+
+.step[data-outcome='answer'] {
+  border-left: 3px solid var(--g-output);
+}
+
+.step[data-outcome='open'] {
+  border-left: 3px dashed var(--g-meta);
+}
+
+.step[data-error] {
+  border-color: var(--g-error);
+}
+
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  height: 20px;
+  background: var(--bg-sunken);
+  font-size: 11px;
+  overflow: hidden;
+}
+
+.step-head .spacer {
+  flex: 1 1 auto;
+}
+
+.step-no {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.step-tools {
+  color: var(--g-act);
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step-outcome {
+  white-space: nowrap;
+}
+
+.step-outcome.o-act {
+  color: var(--g-act);
+}
+
+.step-outcome.o-answer {
+  color: var(--g-output);
+}
+
+.step-outcome.o-open {
+  color: var(--fg-muted);
+}
+
+.step-body {
+  padding: 2px 0;
+}
+
+.step-filtered,
+.step-empty {
+  padding: 0 10px;
+  height: var(--row-h);
+  line-height: var(--row-h);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.step-foot {
+  display: block;
+  width: 100%;
+  height: var(--row-h);
+  line-height: var(--row-h);
+  padding: 0 8px;
+  text-align: right;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.step-foot:hover {
+  background: var(--hover);
+}
+
+.step-foot.selected {
+  background: var(--sel);
+}
+
+/* ── Step 之间的连接线：竖向链的「箭头」 ─────────────────────────── */
+
+.step-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 26px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.step-arrow {
+  color: var(--g-act);
+  font-size: 13px;
+}

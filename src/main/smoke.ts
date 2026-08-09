@@ -95,6 +95,38 @@ export async function runSmoke(
   // ── 第 2 步：打开 01 号夹具，核对 §14.2 的期望值 ──────────────────
   await js(`Array.from(document.querySelectorAll('.session-item')).find(e=>e.textContent.includes('hello.txt'))?.click()`);
   await waitFor(`document.querySelectorAll('.row').length`, '时间线渲染');
+
+  // ★ 视图偏好存在 localStorage 里，上一次跑留下的值会带到这一次。
+  //   所以每组断言前**显式点到**要测的视图，不依赖默认值——否则这几条会随机漂。
+  await js(`document.querySelector('[data-testid="view-graph"]')?.click()`);
+  await waitFor(`document.querySelector('[data-testid="graph"]')`, '图视图渲染');
+  await shot('2-graph');
+
+  // ── §6.8 图视图：Session ▸ Turn ▸ Step 竖向链 ─────────────────────
+  check('§6.8 1 个 Turn', 1, await js(`document.querySelectorAll('[data-testid="turn"]').length`));
+  check('§6.8 2 个 Step', 2, await js(`document.querySelectorAll('[data-testid="step"]').length`));
+  // Step 1 调工具 → 循环继续；Step 2 只回消息 → 出环
+  check('§6.8 收场 act → answer', ['act', 'answer'], await js(
+    `[...document.querySelectorAll('[data-testid="step"]')].map(e=>e.dataset.outcome)`));
+  check('§6.8 两个 Step 之间 1 条连接线', 1, await js(
+    `document.querySelectorAll('[data-testid="step-link"]').length`));
+  check('§6.8 块尾 token 数（§14.2 C11 的会话合计出现在 Step 2）', true, await js(
+    `[...document.querySelectorAll('[data-testid="step-usage"]')].map(e=>e.textContent).join('|').includes('34188 → 263')`));
+  check('§6.8 Turn 头带冻结配置', true, await js(
+    `!!document.querySelector('.turn-config')?.textContent?.includes('read-only')`));
+  // 前言默认收起：turn_context / world_state 不该一上来就占满屏
+  check('§6.8 Turn 前言默认收起', 'false', await js(
+    `document.querySelector('[data-testid="turn-preamble-toggle"]')?.getAttribute('aria-expanded')`));
+  // ★ 图里 F2/F3 同样成立——块只承载结构，行仍是固定单行（§6.0 的前提没变）
+  check('§6.8 图里每行仍等高', 1, await js(
+    `new Set([...document.querySelectorAll('[data-testid="graph"] .row')].map(e=>e.offsetHeight)).size`));
+  check('§6.8 图无横向溢出', true, await js(
+    `(()=>{const g=document.querySelector('[data-testid="graph"]');
+       return g.scrollWidth<=g.clientWidth+1})()`));
+
+  // ── 切到列表视图，跑原有的 §14.4 布局断言 ─────────────────────────
+  await js(`document.querySelector('[data-testid="view-list"]')?.click()`);
+  await waitFor(`document.querySelector('[data-testid="timeline"]')`, '列表视图渲染');
   await shot('2-timeline');
 
   check('F1 时间线 19 行', 19, await js(`document.querySelectorAll('.row').length`));

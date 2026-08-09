@@ -367,7 +367,11 @@ full, state
 | `Esc` | 关闭详情面板 / 退出搜索框 |
 | `⌘F` | 在详情面板内搜索 |
 | `r` | 刷新会话列表 |
+| `g` | 主区视图：图 ⇄ 列表（§6.8） |
 | `⌘1` / `⌘2` | 折叠/展开 左栏 / 右栏 |
+
+> `g` 用单键而不是 `⌘` 组合：`⌘1` / `⌘2` 已经是折叠左右栏，
+> 别在同一个手势族里叠第三层语义。
 
 > 注：旧方案的 `e` / `c`（全部展开/折叠）已移除——
 > 两层结构下没有"全部展开"的语义了。
@@ -456,13 +460,126 @@ example.com/x                   1
 > 要保留换行原样显示。判据是「parse 成功**且**结果是对象或数组」——
 > parse 成数字或字符串的不算，否则 `"123"` 这种值会被错误地当成数字节点。
 
-**为什么不用现成的 JSON 查看器库**：`react-json-view` / `@textea/json-viewer` /
-`react-json-tree` 都靠 emotion 或行内 style 上色，而生产 CSP 是 `style-src 'self'`（§9），
-行内 style 属性会被浏览器拦掉——**开发模式看着正常，打包后直接瞎**。
-自己实现，零新依赖，样式全部进 `global.css`。
+**选库：`react-json-view-lite`**（CSS Modules，零运行时依赖）。
+
+> ⚠️ 曾经在这里写过「所有 JSON 查看器库都过不了 CSP，只能自己实现」——**这句话是错的**，
+> 已按实测更正。真相是分库而论：`react-json-view` / `@textea/json-viewer` 靠 emotion
+> 生成行内 style，确实过不了 `style-src 'self'`（§9）；但 `react-json-view-lite`
+> 用的是 CSS Modules，编译期就落成静态 `.css` 文件，与 CSP 无冲突。
+>
+> 结论不是推理出来的，是**在打包产物的严格 CSP 下实测**的：§14.6 冒烟里有四条专门查这个
+> （树渲染出来了 / 库的缩进样式生效 / 我们接的语义色落到值节点上 / 树里搜不到明文密钥），
+> 全绿且 0 条 CSP 违规。把「某一类库不行」推广成「所有库都不行」是过度概括，代价是白写一个组件。
+
+我们只写一层薄适配（`components/JsonTree.tsx`）：把六组语义色的 class 传进库的 `style` 插槽。
+**不去覆盖库自己那些哈希 class 名**——那是内容哈希，库一升版就全变。
 
 **只读**：这是查看器不是编辑器。§2 的非目标与 §9 的硬约束都要求全程不修改 rollout，
 树里不出现任何可编辑控件。
+
+---
+
+### 6.8 主区「图」视图：Session ▸ Turn ▸ Step（v0.2）
+
+中栏顶部一条 24px 视图条，`图 / 列表` 二选一（`g` 切换，选择存 localStorage）。
+**默认「图」**。列表视图（§6.2 的固定单行时间线）原样保留，一条断言不改。
+
+#### 6.8.1 层级来自 Codex 源码，不是我们发明的
+
+`codex-rs/core/src/tasks/mod.rs` 文件头是权威：
+
+```
+Session
+ └ Task  == Turn == 一个 turn_id == 一个冻结的 TurnContext
+    └ run_turn   Turn 内的「一趟」（被插话 steer 就多一趟）
+       └ Step    一次模型请求 + 处理它的回答
+```
+
+★ **Task 和 Turn 是同一层，不是两层**——源码原话「它们是同一个东西」。
+所以本项目只有 Turn，没有 Task 这一级。照着「Task → Turn → Step」画三层，中间那层是空的。
+
+★ **「趟」故意不还原**：rollout 里没有任何标记，只能靠「Turn 中段冒出 user_message」
+去猜插话。宁可缺一层，不猜错一层。
+
+#### 6.8.2 Step 边界怎么定：`token_count`
+
+rollout 没有显式的 Step 标记。但 `event_msg/token_count` 是**每次模型请求之后的用量上报**，
+天然就是 Step 的收尾。三份夹具 + 真实会话共 4 份样本全部吻合：
+
+```
+turn_context ─────────────────────────────────────── Turn 开始
+  reasoning → message → tool_call → tool_out → token_count   ← Step 1（调工具，循环继续）
+  reasoning → message → token_count                          ← Step 2（只回消息，出环）
+task_complete ────────────────────────────────────── Turn 结束
+```
+
+这正是 ReAct：Think → Act → Observe → 回到 Think，直到某个 Step 只回消息就出环。
+
+> ⚠️ 这是**启发式，不是协议保证**。所以退化路径必须良性：一个 `token_count` 都没有的
+> Turn 整体退化成一个 `open` 状态的 Step，内容一条不少，只是不分段。
+> `flattenGraph(buildGraph(es))` **恒等于** `es`——同样的对象、同样的顺序，由 §14.9 S13 钉死。
+> 切分可以是启发式，「不丢条目」不能是。
+
+#### 6.8.3 为什么不画 SQ / EQ
+
+`protocol/src/protocol.rs` 的 SQ(Submission Queue) / EQ(Event Queue) 这一对里，
+**SQ 完全不落盘**：rollout 只有 agent 发出来的 `Event`（= `event_msg`），
+没有上层发进去的 `Op`。画一条恒空的队列没有意义，因此只保留 EQ 这一半，融进 Step 内的条目。
+
+#### 6.8.4 为什么是竖向链，不是环
+
+turn loop 是 ReAct 循环没错，但真实会话动辄几十个 Step，画成环会糊成一团。
+竖着串 `Step 1 ↓ Step 2 ↓ …`，Step 再多也只是纵向变长，滑轮就能看完。
+
+#### 6.8.5 三条不许改回去的约束
+
+1. **块只承载结构。** 块里每条仍是 §6.2 的固定单行 `.row`，内容全部交给右侧详情面板。
+   §6.0 的设计前提在图里同样成立。
+2. **下钻仍然恰好两层**（图 → 详情面板）。Turn 前言的展开、JSON 树内部的展开都属于
+   **本层内部导航**，不计入层数（口径同 §14.8）。只有真正的下钻才打 `data-drill`。
+3. **结构不随过滤器变形。** 图从**全量** entries 切，过滤只决定哪些行渲染出来。
+   否则用户一关「元信息」组就会把 `token_count` 一起滤掉，而 Step 边界正是靠它切的——
+   结构会当场散架。被滤掉的行在块内以「N 条被过滤」说明。
+
+#### 6.8.6 块的构成
+
+| 部件 | 内容 |
+|---|---|
+| Turn 头 | `Turn N` + 冻结配置 `model · effort · approval · sandbox` + `N step` |
+| Turn 前言 | 默认只显**真人输入**和**异常**两类；其余（`task_started` / `world_state` / `turn_context` / developer 消息）收进「上下文 N 条」 |
+| Step 头 | `Step N` + 本步调用的工具名 + 收场标记 |
+| Step 正文 | 该步的条目，仍是固定单行 `.row` |
+| Step 尾 | `输入 → 输出 tok`，点它下钻到那条 `token_count` |
+| Step 间 | `↓ 工具结果写回历史，再问一次模型` |
+| Turn 尾 | 时长 · 首字 · `task_complete` 链接；未收尾则显示「进行中」 |
+
+收场三态，**符号独立于颜色**（同 §6.3 / F21 的原则，灰度下也分得开）：
+
+| 收场 | 符号 | 左缘 | 含义 |
+|---|---|---|---|
+| `act` | ▶ | 橙实线 | 有工具调用，结果回灌历史，循环继续 |
+| `answer` | ● | 绿实线 | 只回了消息，模型认为活干完了，出环 |
+| `open` | · | 灰虚线 | 还没等到 `token_count`（正在跟随 / 被中断） |
+
+#### 6.8.7 ★ 反直觉：`role === 'user'` 不等于「人打的字」
+
+Turn 前言里哪一条常显，判据是「真人输入」。这里有个实测坑：
+
+夹具 01 的索引 3 是 Codex 注入的 **AGENTS.md 内容**，落盘也带 `role: "user"`
+（`# AGENTS.md instructions for …`）。所以唯一可靠的「人打的字」信号是
+`event_msg/user_message`。
+
+同时，同一句用户输入常常**落两份**（`event_msg/user_message` +
+`response_item/message role=user`），两份都显就是重复噪音。
+
+最终规则：**有事件那份就只认事件那份，一份都没有才退回 `response_item` + `role=user`。**
+退路存在的理由是「万一某份 rollout 只写了后者，这一轮为什么开始会被整个折叠掉」。
+
+#### 6.8.8 空态
+
+一条都没命中时必须给话说（同 F17b：不许白屏）。光靠「Turn/Step 骨架 + N 条被过滤」不够——
+会话若**一个 Turn 都没有**（全是无 Turn 标记的条目），骨架本身就是空的，主区会整片空白。
+所以提示挂在图的最外层，不依赖任何骨架。
 
 ---
 
@@ -987,9 +1104,15 @@ CODEX_HOME=$(pwd)/test UNROLL_SHOT=/tmp/shots npm start
 只有设了 `UNROLL_SHOT` 才会被动态 import，正常启动路径不加载。
 
 1. 左栏列出 3 个夹具会话（依赖 `test/sessions -> fixtures` 符号链接，随仓库提交）
-2. 打开 01 号夹具，核对 §14.2 的期望值与 §14.4 的 F1/F2/F3/F5/F14
-3. 选中索引 11，核对两层下钻（F7/F8/F12/F13）
+2. 打开 01 号夹具：先在**图**视图核对 §6.8 的结构（1 Turn / 2 Step / 收场 act→answer /
+   连接线 / 块尾 token / 前言默认收起 / 图里行仍等高且不横向溢出），
+   再点到**列表**视图核对 §14.4 的 F1/F2/F3/F5/F14
+3. 选中索引 11，核对两层下钻（F7/F8/F12/F13）与 §6.7 的 JSON 树
 4. 打开 03 号夹具、逐条展开，**断言界面任何位置搜不到 `FAKEkeyDoNotUse`**
+
+> ⚠️ 视图偏好存在 localStorage，**上一次跑留下的值会带到这一次**。
+> 所以脚本在每组断言前都**显式点到**要测的视图，不依赖默认值——
+> 否则这几条会随机漂，而发布门禁不能有噪音（同 `waitFor` 那次的教训）。
 
 **为什么必须有这一步**：F2（每行等高）、F3（巨型条目不撑破布局）、F12（面板独立滚动）
 是**布局断言**，而 jsdom 不做布局（`offsetHeight` 恒为 0），单测里这几条恒真、等于没测。
@@ -1028,6 +1151,42 @@ CODEX_HOME=$(pwd)/test UNROLL_SHOT=/tmp/shots npm start
   （解析本来就在渲染侧），代价是没有磁盘路径就不能 `fs.watch`，UI 上把「跟随」置灰并说明原因。
   这与场景 S4（别人发来一份 rollout）相符——那种文件本来就是静态的。
   若要支持「拖放后也能跟随」，需在 preload 加第 9 个方法，会破坏 E7 的「不多不少 8 个」。
+
+### 14.9 v0.2 验收 · Session ▸ Turn ▸ Step 切分与图视图
+
+两组，共 **52 条**。纯函数那组是地基，和 §14.2 一样：**它不全绿就不动 UI**。
+
+**S 组（32 条）· `src/shared/steps.test.ts`** —— 纯函数切分
+
+期望值全部从夹具实测算出，与 §14.2 对得上（S5 的 `14058/3936` 就是 C9/C10，
+S8 的 `34188/263` 就是 C11）：
+
+| 编号 | 断言 |
+|---|---|
+| S1–S9 | 夹具 01：1 Turn / 2 Step；`session_meta` 落会话前言；turnId、冻结配置、时长首字；前言到第一条模型产出为止（7 条）；Step 1 = act + `→ apply_patch` + `16986/187`；Step 2 = answer + `34188/263`；`task_complete` 挂 Turn 不进 Step |
+| S10 | 夹具 02 走 `function_call` 路径，结构相同 |
+| S11–S12 | 夹具 03 无 `task_started`，`turn_context` 也能起 Turn；未知类型/坏行照常保留 |
+| **S13** | ★ **flatten 恒等**：三份夹具都满足 `flattenGraph(buildGraph(es))` 与 `es` 逐个引用相同 |
+| S14–S24 | 退化路径：空输入 / 无 Turn 标记 / 一个 `token_count` 都没有 / 未收尾 / 第二个 `turn_context` 起新 Turn / `turn_id` 变了 / 无正文的 `token_count`（两种位置，顺序都不许乱）/ 坏行 → `hasError` |
+| S25 | `isUserInput` 认两种落盘形式；**夹具 01 命中 3 条**，其中索引 3 是 AGENTS.md 注入而非真人输入（见 §6.8.7） |
+| S26 | Turn 序号从 1 起且连续 |
+
+**G 组（20 条）· `src/renderer/components/StepGraph.test.tsx`** —— 图视图组件
+
+> 命名撞车提醒：这里的 G 是 **G**raph，与 §14.5 跟随的 G 组是两个命名空间。
+
+| 编号 | 断言 |
+|---|---|
+| G1–G5 | 骨架：1 Turn / 2 Step；`data-outcome` = act / answer；恰好 1 条连接线且夹在两块中间；块尾 token 数与点击下钻的索引（13 / 17）；Turn 头的冻结配置 |
+| G6 | 前言默认只显真人输入，`turn_context` / `world_state` 收在折叠里；展开后 7 条全在 |
+| **G7** | ★ **结构不随过滤变形**：`visible` 缩到 2 条，Turn / Step 数量与 outcome 与连接线**完全不变**，被滤掉的以「N 条被过滤」说明；全滤掉时骨架仍在 |
+| G8 | 选中态：命中行带 `selected` 且唯一；选中 `token_count` 时高亮的是块尾而非某行 |
+| G9–G10 | MainPane：默认图、切列表、`aria-pressed` 翻转、偏好落 localStorage 后重挂载仍生效；视图条文案 `1 turn · 2 step` |
+| G11–G12 | 退化：空图给文案；夹具 03 的坏行**默认就可见**，不被折叠藏起来 |
+| **G13** | ★ **白屏回归**：会话一个 Turn 都没有（骨架自身为空）+ 一条都没命中 → 必须给提示 |
+| G14 | 只有 `response_item` 形式的用户输入时，前言仍常显它（§6.8.7 的退路） |
+
+另有 §14.6 冒烟里的 9 条图视图布局断言——`offsetHeight` / `scrollWidth` 这类只有真实渲染器能测。
 
 ### 14.7 测试工程
 

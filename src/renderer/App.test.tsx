@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import type { UnrollAPI } from '../shared/types';
 import { App } from './App';
 import { DETAIL_TRUNCATE, ROW_PREVIEW_MAX } from './format';
+import { VIEW_KEY } from './hooks/useViewMode';
 
 // jsdom 环境下 import.meta.url 的 base 不可靠，直接用 vitest 的 cwd（仓库根）
 const fx = (name: string) => join(process.cwd(), 'test/fixtures', name);
@@ -33,6 +34,14 @@ let resetCb: ((p: { path: string }) => void) | null = null;
 beforeEach(() => {
   appendCb = null;
   resetCb = null;
+  /**
+   * ★ 本文件的 F 组断言测的是**列表**视图——「19 条 = 19 行」这类等式只在列表下成立。
+   * 主区默认视图已改为「图」（§6.8），图里 token_count 走块尾、task_complete 走 Turn 尾，
+   * 都不是 .row，行数自然对不上。所以这里显式切回列表，不是为了让测试变绿，
+   * 而是让每条断言测的仍然是它当初要测的那个东西。
+   * 图视图另有一组断言，见 components/StepGraph.test.tsx。
+   */
+  localStorage.setItem(VIEW_KEY, 'list');
   // jsdom 不实现 scrollIntoView，F19 靠这个 spy 验证
   Element.prototype.scrollIntoView = vi.fn();
   api = {
@@ -69,6 +78,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  localStorage.clear();
 });
 
 /** 渲染 App 并从左栏打开一份夹具 */
@@ -672,7 +682,11 @@ describe('会话列表按项目分组（§12 Q3）', () => {
     screen.getAllByTestId('session-item').map((el) => (el as HTMLElement).dataset.path);
 
   beforeEach(() => {
+    // 这一组测的是分组折叠的持久化，要从干净的 localStorage 起步。
+    // 但外层 beforeEach 设的视图偏好不能一起清掉——清了这里就变成图视图，
+    // 而「点开会话渲染 19 行」是列表视图的断言。
     localStorage.clear();
+    localStorage.setItem(VIEW_KEY, 'list');
   });
 
   it('多项目 → 渲染组头，组序按「组内最新 mtime」倒序', async () => {
