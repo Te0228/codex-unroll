@@ -995,31 +995,72 @@ mark {
   opacity: 0.85;
 }
 
-/* ── Turn：一整个色带外框 ────────────────────────────────────────── */
+/* ── Turn：一条贯穿的主干线，Step 挂在上面 ─────────────────────────
+   ★「图感」的来源。之前是满宽的带框矩形，读起来像分组列表不像图：
+     图的图感来自**边**，没有一条把节点串起来的线就不成图。
+   干线是 .turn::before 画的一条竖线，头尾各有一个菱形节点，
+   Step 用一小段横向短线接到干线上。
+   ────────────────────────────────────────────────────────────── */
 
 .turn {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 14px;
-  overflow: hidden;
-  background: var(--bg);
+  position: relative;
+  /* 左边留出干线和节点的位置；节点圆心落在 7px */
+  padding-left: 18px;
+  margin-bottom: 18px;
 }
 
-/* 没等到 task_complete：左缘用虚线提示「还没收尾」，不靠颜色单独表意 */
-.turn[data-status='open'] {
-  border-style: dashed;
+/* 主干线本体。上下各缩半行，让线正好起止于头尾节点的圆心 */
+.turn::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: calc(var(--row-h) / 2);
+  bottom: calc(var(--row-h) / 2);
+  width: 2px;
+  /* ★ 不能用 --border：它是给 1px 分隔线调的，画 2px 竖线时淡到看不见。
+     干线是图的骨架，必须看得清，所以用 --fg-muted 压透明度。 */
+  background: var(--fg-muted);
+  opacity: 0.5;
 }
 
-.turn-head {
+/* 没等到 task_complete：干线渐隐，表示「还在往下走，只是没写完」 */
+.turn[data-status='open']::before {
+  background: linear-gradient(var(--fg-muted) 55%, transparent);
+}
+
+.turn-head,
+.turn-foot {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
-  height: 24px;
-  background: var(--bg-sunken);
-  border-bottom: 1px solid var(--border);
+  height: var(--row-h);
   font-size: 11px;
-  overflow: hidden;
+  /* ⚠️ 这里**不能**加 overflow: hidden——头尾的节点画在 left:-18px，
+     在元素框外面，一加就被裁掉，干线上会光秃秃没有端点。
+     文字的截断由 .turn-config 自己的 ellipsis 负责。 */
+}
+
+/* 头尾的菱形节点，压在干线上 */
+.turn-head::before,
+.turn-foot::before {
+  position: absolute;
+  left: -18px;
+  width: 16px;
+  text-align: center;
+  /* 盖住干线，让节点看起来是「串在」线上而不是浮在旁边 */
+  background: var(--bg);
+  font-size: 10px;
+}
+
+.turn-head::before {
+  content: '◆';
+  color: var(--g-input);
+}
+
+.turn-foot::before {
+  content: '◇';
+  color: var(--fg-muted);
 }
 
 .turn-head .spacer {
@@ -1034,6 +1075,7 @@ mark {
 
 .turn-config,
 .turn-steps {
+  min-width: 0;
   color: var(--fg-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -1041,14 +1083,7 @@ mark {
 }
 
 .turn-foot {
-  display: flex;
-  align-items: center;
   gap: 10px;
-  padding: 0 10px;
-  height: 22px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-sunken);
-  font-size: 11px;
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -1057,11 +1092,10 @@ mark {
   color: var(--g-act);
 }
 
-/* ── Turn 前言：用户消息常显，其余上下文收起 ─────────────────────── */
+/* ── Turn 前言：默认全展开，收起后只留真人输入与异常 ───────────────── */
 
 .turn-pre {
   padding: 2px 0;
-  border-bottom: 1px dashed var(--border);
 }
 
 .turn-pre-toggle {
@@ -1070,7 +1104,7 @@ mark {
   gap: 5px;
   width: 100%;
   height: var(--row-h);
-  padding: 0 10px;
+  padding: 0 8px;
   text-align: left;
   font-size: 11px;
   color: var(--fg-muted);
@@ -1087,10 +1121,29 @@ mark {
 }
 
 .step {
+  position: relative;
   border: 1px solid var(--border);
   border-radius: 6px;
-  overflow: hidden;
   background: var(--bg);
+  /* ⚠️ 这里**不能**加 overflow: hidden——接干线的短横线画在 left:-19px，
+     在元素框外面，一加就被裁掉，Step 会看起来是「浮着的方块」而不是挂在线上。
+     圆角的收边改由 .step-head / .step-foot 自己的圆角负责。
+     （同样的坑在 .turn-head 上踩过一次。） */
+}
+
+/* 接到主干线的一小段横线——Step 是挂在干线上的节点，不是并排的方块。
+   ⚠️ 长度必须正好够到干线圆心：Step 左缘在 turn 坐标 26px（18 的 turn 内边距
+   + 8 的 .steps 内边距），干线圆心在 7px，所以是 19px。
+   短了会留一道缝，看起来像「没接上」，图感当场垮掉。 */
+.step::before {
+  content: '';
+  position: absolute;
+  left: -19px;
+  top: calc(var(--row-h) / 2);
+  width: 19px;
+  height: 2px;
+  background: var(--fg-muted);
+  opacity: 0.5;
 }
 
 /* 收场用左缘粗边表达，和块头的符号双重编码，灰度下也分得开 */
@@ -1117,12 +1170,41 @@ mark {
   padding: 0 8px;
   height: 20px;
   background: var(--bg-sunken);
+  border-radius: 5px 5px 0 0;
   font-size: 11px;
   overflow: hidden;
 }
 
 .step-head .spacer {
   flex: 1 1 auto;
+}
+
+/* 序号做成节点圆点。满宽标题栏里的一行字读不出「节点」，圆点能 */
+.step-node {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1.5px solid currentcolor;
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.step[data-outcome='act'] .step-node {
+  color: var(--g-act);
+}
+
+.step[data-outcome='answer'] .step-node {
+  color: var(--g-output);
+}
+
+.step[data-outcome='open'] .step-node {
+  color: var(--fg-muted);
+  border-style: dashed;
 }
 
 .step-no {
@@ -1158,6 +1240,29 @@ mark {
   padding: 2px 0;
 }
 
+/* ── 支线：出去调工具、带着结果回来 ──────────────────────────────
+   ReAct 里最有形状的一步。摆成上下相邻的两行是读不出「往返」的，
+   缩进 + 一个包住首尾两行圆心的括号才读得出来。
+   括号上下各缩半行，正好从「调用」那行的圆心画到「结果」那行的圆心。
+   ────────────────────────────────────────────────────────────── */
+.branch {
+  position: relative;
+  margin-left: 12px;
+  padding-left: 14px;
+}
+
+.branch::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: calc(var(--row-h) / 2);
+  bottom: calc(var(--row-h) / 2);
+  width: 7px;
+  border: 1.5px solid var(--g-act);
+  border-right: none;
+  border-radius: 5px 0 0 5px;
+}
+
 .step-filtered,
 .step-empty {
   padding: 0 10px;
@@ -1170,6 +1275,7 @@ mark {
 .step-foot {
   display: block;
   width: 100%;
+  border-radius: 0 0 5px 5px;
   height: var(--row-h);
   line-height: var(--row-h);
   padding: 0 8px;

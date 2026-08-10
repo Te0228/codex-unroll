@@ -35,7 +35,7 @@ M7   打包分发                                     ✅ zip 产物可跑
 v0.2 主区「图」视图 Session▸Turn▸Step（§6.8）      ✅ §14.9 共 53 条
 ```
 
-**v0.1 功能完整，v0.2 加了图视图。** 单测 **409 条**全绿，端到端冒烟 31/31。
+**v0.1 功能完整，v0.2 加了图视图。** 单测 **415 条**全绿，端到端冒烟 31/31。
 
 ### 已装好的依赖
 
@@ -148,7 +148,7 @@ v0.2 主区「图」视图 Session▸Turn▸Step（§6.8）      ✅ §14.9 共 
 ```bash
 npm start            # electron-forge start（Vite HMR）
 npm run typecheck    # tsc --noEmit
-npm test             # vitest run，409 条
+npm test             # vitest run，415 条
 npm test -- rollout  # 单文件
 npm run test:cov     # 覆盖率（src/shared/ 门槛 90%）
 npm run make         # 打包 zip

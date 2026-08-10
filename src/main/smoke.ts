@@ -66,7 +66,23 @@ export async function runSmoke(
     await fs.writeFile(path.join(outDir, `${name}.png`), img.toPNG());
   };
 
-  await new Promise<void>((r) => win.webContents.once('did-finish-load', () => r()));
+  /**
+   * ★ 等首次加载完成。**不能只监听 did-finish-load**：
+   * 本模块是动态 import 进来的，等它 resolve 时页面往往**已经加载完了**，
+   * 事件早就发过，监听器再挂上去就永远等不到——冒烟会静默挂死，
+   * 一条 PASS/FAIL 都不打印。（和当年 `await wait(1500)` 是同一类错误：
+   * 把「时序恰好合适」当成了判据。）
+   *
+   * 所以：先问状态，再监听；两边都不成立时用超时兜底。
+   * 后面每一步本来就是 waitFor 轮询，这里早一点晚一点都能自愈，
+   * 唯独**永久挂起**不能接受——发布门禁必须要么绿要么红。
+   */
+  await new Promise<void>((resolve) => {
+    if (!win.webContents.isLoading()) return resolve();
+    const done = () => resolve();
+    win.webContents.once('did-finish-load', done);
+    setTimeout(done, 20000);
+  });
 
   // ── 第 1 步：左栏列出 3 个夹具会话 ────────────────────────────────
   await waitFor(`document.querySelector('.dropzone')`, '空状态渲染');

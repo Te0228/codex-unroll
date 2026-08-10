@@ -95,7 +95,7 @@ Requires Node 20+. macOS first; Windows and Linux should work but are untested.
 
 ### Status
 
-**v0.1 feature-complete; v0.2 adds the graph view.** 409 unit tests, 100% line coverage on the
+**v0.1 feature-complete; v0.2 adds the graph view.** 415 unit tests, 100% line coverage on the
 normalization layer, end-to-end smoke suite passing 31/31 against both the dev build and the
 packaged app.
 
@@ -192,7 +192,7 @@ Electron Forge · Vite · React 19 · TypeScript · Vitest · oxlint
 npm install
 npm start                          # 开发模式
 CODEX_HOME=$(pwd)/test npm start   # 用测试夹具当数据源
-npm test                           # 409 条单测
+npm test                           # 415 条单测
 npm run test:cov                   # 覆盖率（src/shared/ 门槛 90%）
 npm run typecheck
 npm run lint                       # oxlint

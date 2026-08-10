@@ -11,8 +11,15 @@
  *    渲染出来。否则关掉「元信息」就会连 token_count 一起滤掉，
  *    而 Step 边界正是靠它切的——结构会当场散架。
  *
- * Turn 前言（task_started / world_state / turn_context / 系统消息）默认收起，
- * 只留用户消息和异常两类常显——这两类是「这一轮为什么开始」和「哪里出问题了」。
+ * 「图感」来自三样东西，缺一样就退化成带框的分组列表：
+ *   · **主干线**——Turn 左侧一条贯穿的竖线，Step 挂在它上面。没有边就没有图。
+ *   · **节点**——Step 序号做成干线上的圆点，而不是满宽标题栏里的一行字。
+ *   · **支线**——工具调用与它的结果缩进成一段支出去又回来的括号。
+ *     ReAct 里最有形状的一步就是「出去调工具、带着结果回来」，
+ *     摆成上下相邻的两行是读不出来的。
+ *
+ * Turn 前言（task_started / world_state / turn_context / 系统消息）**默认全展开**，
+ * 收起后仍保留用户消息和异常两类——「这一轮为什么开始」和「哪里出问题了」。
  */
 import { Fragment, memo, useState } from 'react';
 import type { Entry } from '../../shared/types';
@@ -231,6 +238,10 @@ const Step = memo(function Step({ step, visible, selectedIndex, onSelect }: Step
       data-error={step.hasError || undefined}
     >
       <header className="step-head">
+        {/* 圆形节点挂在主干线上，是「图感」的来源；文字给读屏器 */}
+        <span className="step-node" aria-hidden="true">
+          {step.no}
+        </span>
         <span className="step-no">Step {step.no}</span>
         {step.tools.length > 0 && <span className="step-tools">{step.tools.join(' · ')}</span>}
         <span className="spacer" />
@@ -240,14 +251,23 @@ const Step = memo(function Step({ step, visible, selectedIndex, onSelect }: Step
       </header>
 
       <div className="step-body">
-        {shown.map((e) => (
-          <TimelineRow
-            key={e.index}
-            entry={e}
-            selected={e.index === selectedIndex}
-            onSelect={onSelect}
-          />
-        ))}
+        {groupBranches(shown).map((g) =>
+          g.branch ? (
+            // ★ 支线：出去调工具、带着结果回来。ReAct 里最有形状的一步，
+            //   画成从主线支出去的一段缩进，比上下两行相邻读得出来得多。
+            <div className="branch" key={g.items[0].index} data-testid="branch">
+              <Rows entries={g.items} visible={visible} sel={selectedIndex} onSelect={onSelect} />
+            </div>
+          ) : (
+            <Rows
+              key={g.items[0].index}
+              entries={g.items}
+              visible={visible}
+              sel={selectedIndex}
+              onSelect={onSelect}
+            />
+          ),
+        )}
         {filtered > 0 && <p className="step-filtered">{filtered} 条被过滤</p>}
         {step.entries.length === 0 && <p className="step-filtered">这一步没有可见产出</p>}
       </div>
@@ -267,6 +287,25 @@ const Step = memo(function Step({ step, visible, selectedIndex, onSelect }: Step
 });
 
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * 把连续的「工具调用 / 工具结果」并成一段支线。
+ *
+ * 只按 kind 分段、不去配 `call_id`：一个 Step 里可能有多个工具调用，
+ * 而 rollout 并不保证 call 与 output 严格交替（失败的调用可能没有 output）。
+ * 按连续段分组对乱序和缺失都免疫，最坏结果只是一段支线里装了两次往返——
+ * 仍然比摆成平铺的四行读得出来。
+ */
+function groupBranches(entries: Entry[]): { branch: boolean; items: Entry[] }[] {
+  const out: { branch: boolean; items: Entry[] }[] = [];
+  for (const e of entries) {
+    const branch = e.kind === 'tool_call' || e.kind === 'tool_out';
+    const last = out[out.length - 1];
+    if (last && last.branch === branch) last.items.push(e);
+    else out.push({ branch, items: [e] });
+  }
+  return out;
+}
 
 function Rows({
   entries,

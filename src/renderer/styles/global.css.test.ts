@@ -60,6 +60,55 @@ describe('F3 · 巨型条目仍只占一行', () => {
   });
 });
 
+/**
+ * §6.8 图视图的「图感」靠三条连线撑着：Turn 主干线、Step 接干线的短横线、
+ * 工具往返的括号。三者都画在**元素框外面**（负 left），
+ * 所以任何祖先加 `overflow: hidden` 都会把它们裁掉——
+ * 视觉上表现为「节点浮着、没接上」，图当场退化成带框的列表。
+ *
+ * ★ 这个坑踩过两次（.turn-head 裁掉菱形端点、.step 裁掉接线），
+ *   所以钉成断言。jsdom 不做布局，量不了几何，但「规则在不在」量得了。
+ */
+describe('§6.8 · 图的连线不能被祖先裁掉', () => {
+  it('主干线画在 .turn::before，上下各缩半行以对齐端点圆心', () => {
+    const body = rule('.turn::before');
+    expect(body).toContain('position: absolute');
+    expect(body).toMatch(/top:\s*calc\(var\(--row-h\) \/ 2\)/);
+    expect(body).toMatch(/bottom:\s*calc\(var\(--row-h\) \/ 2\)/);
+  });
+
+  it('干线不用 --border 上色——2px 竖线用它会淡到看不见', () => {
+    expect(rule('.turn::before')).not.toContain('background: var(--border)');
+  });
+
+  /**
+   * ⚠️ 必须先剥注释再查声明：这两条规则里恰好有一段注释在解释
+   * 「为什么不能加 overflow: hidden」，直接 toContain 会命中注释文字，
+   * 断言就永远是红的——查的是「有没有这条声明」，不是「有没有这几个字」。
+   */
+  const decls = (selector: string) => rule(selector).replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('.turn-head / .turn-foot 不许 overflow: hidden——会裁掉干线两端的菱形', () => {
+    expect(decls('.turn-head,\n.turn-foot')).not.toContain('overflow: hidden');
+  });
+
+  it('.step 不许 overflow: hidden——会裁掉接干线的那截横线', () => {
+    expect(decls('.step')).not.toContain('overflow: hidden');
+  });
+
+  it('Step 的接线足够长，能够到干线圆心（19px = 18 turn 内边距 + 8 steps 内边距 − 7 圆心）', () => {
+    const body = rule('.step::before');
+    expect(body).toContain('left: -19px');
+    expect(body).toContain('width: 19px');
+  });
+
+  it('工具往返的括号是左/上/下三边，右边开口', () => {
+    const body = rule('.branch::before');
+    expect(body).toContain('border-right: none');
+    expect(body).toMatch(/border-radius:\s*\d+px 0 0 \d+px/);
+  });
+});
+
 describe('F12 · 详情面板独立滚动，主区不滚', () => {
   it('body 自身不滚动', () => {
     expect(rule('body')).toContain('overflow: hidden');
