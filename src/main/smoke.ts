@@ -114,9 +114,14 @@ export async function runSmoke(
     `[...document.querySelectorAll('[data-testid="step-usage"]')].map(e=>e.textContent).join('|').includes('34188 → 263')`));
   check('§6.8 Turn 头带冻结配置', true, await js(
     `!!document.querySelector('.turn-config')?.textContent?.includes('read-only')`));
-  // 前言默认收起：turn_context / world_state 不该一上来就占满屏
-  check('§6.8 Turn 前言默认收起', 'false', await js(
+  // ★ 前言默认全展开——查看器的职责是「摊开」不是「摘要」
+  check('§6.8 Turn 前言默认展开', 'true', await js(
     `document.querySelector('[data-testid="turn-preamble-toggle"]')?.getAttribute('aria-expanded')`));
+  // ★ 一条都不能少：19 条 = 16 行 + 2 个 Step 块尾 + 1 个 Turn 尾
+  check('§6.8 19 条全有归宿（16 行 + 2 块尾 + 1 Turn 尾）', [16, 2, 1], await js(
+    `[document.querySelectorAll('[data-testid="graph"] .row').length,
+      document.querySelectorAll('[data-testid="step-usage"]').length,
+      document.querySelectorAll('[data-testid="turn-end"]').length]`));
   // ★ 图里 F2/F3 同样成立——块只承载结构，行仍是固定单行（§6.0 的前提没变）
   check('§6.8 图里每行仍等高', 1, await js(
     `new Set([...document.querySelectorAll('[data-testid="graph"] .row')].map(e=>e.offsetHeight)).size`));

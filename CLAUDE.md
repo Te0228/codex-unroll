@@ -29,13 +29,13 @@ M2   shared/rollout.ts + 单测（§14.2 共 40 条）    ✅ 完成，40/40 绿
 M3   主进程 IPC（§14.3 E1–E7）+ 跟随（G1–G7）      ✅ 完成
 M4   React UI（§14.4 F1–F24）                     ✅ 完成
 M5   实时跟随                                     ✅ 完成
-M6   端到端冒烟（§14.6）已脚本化                    ✅ 30/30 绿
+M6   端到端冒烟（§14.6）已脚本化                    ✅ 31/31 绿
 M7   打包分发                                     ✅ zip 产物可跑
 ────────────────────────────────────────────────
-v0.2 主区「图」视图 Session▸Turn▸Step（§6.8）      ✅ §14.9 共 52 条
+v0.2 主区「图」视图 Session▸Turn▸Step（§6.8）      ✅ §14.9 共 53 条
 ```
 
-**v0.1 功能完整，v0.2 加了图视图。** 单测 **401 条**全绿，端到端冒烟 30/30。
+**v0.1 功能完整，v0.2 加了图视图。** 单测 **409 条**全绿，端到端冒烟 31/31。
 
 ### 已装好的依赖
 
@@ -148,7 +148,7 @@ v0.2 主区「图」视图 Session▸Turn▸Step（§6.8）      ✅ §14.9 共 
 ```bash
 npm start            # electron-forge start（Vite HMR）
 npm run typecheck    # tsc --noEmit
-npm test             # vitest run，401 条
+npm test             # vitest run，409 条
 npm test -- rollout  # 单文件
 npm run test:cov     # 覆盖率（src/shared/ 门槛 90%）
 npm run make         # 打包 zip

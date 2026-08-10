@@ -162,30 +162,36 @@ function Turn({ turn, visible, selectedIndex, onSelect }: TurnProps) {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Turn 前言。用户消息和异常常显，其余上下文默认收起。
+ * Turn 前言（task_started / 系统与开发者消息 / world_state / turn_context / 用户输入）。
+ *
+ * ★ **默认全展开。** 这里一度默认收起，结果 19 条的会话在图里只显出 10 条——
+ *   藏掉了近一半。查看器的职责是「摊开」不是「摘要」，看不见的东西等于不存在。
+ *   收起仍然留着（长会话里 AGENTS.md 那几条确实占地方），但要用户自己按。
+ *
+ * 折叠时保留常显的两类：**真人输入**（这一轮为什么开始）和**异常**（哪里出问题了）。
  *
  * ⚠️ 这个展开**不算一层下钻**（§14.8 的既定口径：本层内部导航不计），
  *    所以不打 `data-drill`。真正的下钻仍然只有「图 → 详情面板」这一次。
  */
 function TurnPreamble({ entries, visible, selectedIndex, onSelect }: Omit<TurnProps, 'turn'> & { entries: Entry[] }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   if (entries.length === 0) return null;
 
   /**
    * 同一句用户输入常常落两份（event_msg/user_message + response_item/message）。
-   * 两份都显就成了重复噪音，所以**有事件那份就只认事件那份**，
+   * 折叠态下两份都留就成了重复噪音，所以**有事件那份就只认事件那份**，
    * 没有才退回 response_item——退路存在的理由见 isUserInput 的注释。
    */
   const hasEventUser = entries.some((e) => e.payloadType === 'user_message');
   const isLead = (e: Entry) =>
     e.kind === 'error' || (hasEventUser ? e.payloadType === 'user_message' : isUserInput(e));
-  const hidden = entries.filter((e) => !isLead(e)).length;
+  const foldable = entries.filter((e) => !isLead(e)).length;
   const shown = open ? entries : entries.filter(isLead);
 
   return (
     <div className="turn-pre" data-testid="turn-preamble">
       <Rows entries={shown} visible={visible} sel={selectedIndex} onSelect={onSelect} />
-      {hidden > 0 && (
+      {foldable > 0 && (
         <button
           type="button"
           className="turn-pre-toggle"
@@ -194,7 +200,7 @@ function TurnPreamble({ entries, visible, selectedIndex, onSelect }: Omit<TurnPr
           onClick={() => setOpen((v) => !v)}
         >
           <span aria-hidden="true">{open ? '▾' : '▸'}</span>
-          {open ? '收起上下文' : `上下文 ${hidden} 条`}
+          {open ? `收起上下文 ${foldable} 条` : `展开上下文 ${foldable} 条`}
         </button>
       )}
     </div>

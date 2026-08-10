@@ -167,31 +167,48 @@ describe('图的骨架（§6.8）', () => {
 // ═══════════════════════════════════════════════════════════════════
 describe('Turn 前言的折叠（§6.8）', () => {
   /**
-   * G6 · 前言里 7 条有 6 条是上下文噪音（task_started / world_state /
-   * turn_context / developer 指令）。默认全展开的话，每个 Turn 开头都要滚过
-   * 一大坨才看得到模型产出——但「这一轮为什么开始」（user_message）
-   * 和「哪里出问题了」（error）必须常显，否则折叠就成了信息丢失。
+   * ★ G6 · **默认全展开**。这里一度默认收起，结果 19 条的会话在图里只显出 10 条，
+   * 藏掉了近一半——查看器的职责是「摊开」不是「摘要」。
+   * 折叠仍然留着，但要用户自己按。
    */
-  it('G6 · 默认只显示用户消息，turn_context / world_state 收在折叠里', () => {
+  it('G6 · 默认展开，前言 7 条全在，aria-expanded 是 true', () => {
     renderGraph(entriesOf(F01));
     const pre = screen.getByTestId('turn-preamble');
-    expect(rowIndices(pre)).toEqual([7]); // 索引 7 = event_msg/user_message
-    // 4 = world_state、5 = turn_context、1 = task_started，默认都不在 DOM 里
-    expect(rowIndices(pre)).not.toContain(4);
-    expect(rowIndices(pre)).not.toContain(5);
+    expect(rowIndices(pre)).toEqual([1, 2, 3, 4, 5, 6, 7]);
 
     const toggle = screen.getByTestId('turn-preamble-toggle');
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    // 折叠不能是「悄悄藏起来」——要说清藏了几条
-    expect(toggle.textContent).toContain('上下文 6 条');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.textContent).toContain('收起上下文 6 条');
   });
 
-  it('G6b · 点开后前言 7 条全部可见，aria-expanded 从 false 变 true', () => {
+  /**
+   * ★ G6b · **一条都不能少**。这是「少了很多内容」那次的回归断言：
+   * 19 条里，16 条是行、2 条 token_count 在 Step 块尾、1 条 task_complete 在 Turn 尾——
+   * 加起来必须正好 19，不许有条目落在任何一个渲染出口之外。
+   */
+  it('G6b · 默认状态下 19 条全部有归宿：16 行 + 2 块尾 + 1 Turn 尾', () => {
+    const es = entriesOf(F01);
+    const { container } = renderGraph(es);
+    const rows = [...container.querySelectorAll<HTMLElement>('[data-testid="row"]')];
+    expect(rows).toHaveLength(16);
+    expect(usages()).toHaveLength(2);
+    expect(screen.getAllByTestId('turn-end')).toHaveLength(1);
+    expect(rows.length + usages().length + 1).toBe(es.length);
+    // 且这 16 行的索引恰好是「全部条目 - 两条 token_count - 一条 task_complete」
+    expect(rows.map((r) => Number(r.dataset.index))).toEqual(
+      es.map((e) => e.index).filter((i) => ![13, 17, 18].includes(i)),
+    );
+  });
+
+  it('G6c · 点折叠后只留真人输入，aria-expanded 从 true 变 false', () => {
     renderGraph(entriesOf(F01));
     fireEvent.click(screen.getByTestId('turn-preamble-toggle'));
-    expect(rowIndices(screen.getByTestId('turn-preamble'))).toEqual([1, 2, 3, 4, 5, 6, 7]);
-    expect(screen.getByTestId('turn-preamble-toggle').getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByTestId('turn-preamble-toggle').textContent).toContain('收起上下文');
+    const toggle = screen.getByTestId('turn-preamble-toggle');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    // 索引 7 = event_msg/user_message，「这一轮为什么开始」折叠了也得看得见
+    expect(rowIndices(screen.getByTestId('turn-preamble'))).toEqual([7]);
+    // 折叠不能是「悄悄藏起来」——要说清藏了几条
+    expect(toggle.textContent).toContain('展开上下文 6 条');
   });
 });
 
@@ -364,14 +381,14 @@ describe('退化路径（§3.4：不认识也不崩）', () => {
     expect(steps()).toHaveLength(1);
     expect(rowIndices(steps()[0])).toEqual([9, 10]); // function_call + function_call_output
 
-    const pre = screen.getByTestId('turn-preamble');
-    const shown = rowsIn(pre);
-    // 默认可见的恰好是「用户消息 + 坏行」这两类
+    // 默认展开：坏行（索引 6）和未知顶层类型（brand_new_top_level_type，索引 5）都在
+    expect(rowIndices(screen.getByTestId('turn-preamble'))).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+
+    // 折叠后仍必须留着坏行——「哪里出问题了」不能被折叠吞掉
+    fireEvent.click(screen.getByTestId('turn-preamble-toggle'));
+    const shown = rowsIn(screen.getByTestId('turn-preamble'));
     expect(shown.map((r) => r.dataset.index)).toEqual(['2', '6']);
     expect(shown.map((r) => r.dataset.kind)).toEqual(['user', 'error']);
-    // 未知顶层类型（brand_new_top_level_type，索引 5）不丢，只是收在折叠里
-    fireEvent.click(screen.getByTestId('turn-preamble-toggle'));
-    expect(rowIndices(screen.getByTestId('turn-preamble'))).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   /**
@@ -413,9 +430,11 @@ describe('退化路径（§3.4：不认识也不崩）', () => {
       JSON.stringify({ type: 'response_item', payload: { type: 'reasoning', content: 'a' } }),
     ]);
     renderGraph(es);
-    const pre = screen.getByTestId('turn-preamble');
-    // 只有 role=user 那条常显；developer 那条收在折叠里
-    expect(rowIndices(pre)).toEqual([2]);
-    expect(screen.getByTestId('turn-preamble-toggle').textContent).toContain('上下文 2 条');
+    // 默认展开，三条都在
+    expect(rowIndices(screen.getByTestId('turn-preamble'))).toEqual([0, 1, 2]);
+    // 折叠后只留 role=user 那条；developer 那条属于要折起来的噪音
+    fireEvent.click(screen.getByTestId('turn-preamble-toggle'));
+    expect(rowIndices(screen.getByTestId('turn-preamble'))).toEqual([2]);
+    expect(screen.getByTestId('turn-preamble-toggle').textContent).toContain('展开上下文 2 条');
   });
 });
