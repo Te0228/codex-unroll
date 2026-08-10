@@ -9,6 +9,7 @@ SPEC §14 的验收基线。**期望值是从这些文件实测算出来的确�
 | `01-apply-patch-rejected.jsonl` | 19 | 104 KB | 真实会话 | `custom_tool_call`(apply_patch) + **沙箱拒绝**路径 |
 | `02-exec-command.jsonl` | 17 | 112 KB | 真实会话 | `function_call`(exec_command) + **成功**路径 |
 | `03-edge-cases.jsonl` | 14 | 28 KB | 手工构造 | 脱敏 / 坏行 / 未知类型 / 超大内容 / 缺字段 |
+| `04-multi-turn.jsonl` | 58 | 28 KB | 手工构造 | **多 Turn** / 逐轮冻结配置变化 / 三种 Step 收场 / 未收尾的会话 |
 
 ## 为什么 01 和 02 都要保留
 
@@ -20,6 +21,48 @@ SPEC §14 的验收基线。**期望值是从这些文件实测算出来的确�
 | `exec_command` | `function_call` | `arguments` | **JSON 字符串，需二次解析** |
 
 只留一份会导致另一条路径完全没有测试覆盖。
+
+## 为什么要有 04
+
+01/02/03 **全都是单 Turn**。也就是说 `Session ▸ Turn ▸ Step` 这条层级里，
+中间那一层在真实数据上从来没被端到端验过——多 Turn 的分支此前只有 `synth()`
+手搓的合成条目覆盖，而合成条目验不了「渲染出来长什么样」。
+
+04 是刻意构造的一份**典型会话**，把前三份夹具凑不齐的形状一次补齐：
+
+| 覆盖点 | 位置 | 为什么重要 |
+|---|---|---|
+| 3 个 Turn | 全篇 | 图视图的中间层，此前无真实数据覆盖 |
+| **逐轮冻结配置变化** | Turn 1 `read-only`/`never` → Turn 2 `workspace-write`/`on-request` | TurnContext 是**一轮一冻结**，不是全会话一份。单 Turn 夹具永远显不出这件事 |
+| 一轮内 5 个 Step | Turn 2 | ReAct 循环真正跑起来的样子：改 → 测试挂 → 修 → 测试过 → 收尾 |
+| 三种 Step 收场 | `act` / `answer` / `open` | 旧夹具只有 act 和 answer |
+| 两条工具路径同篇出现 | Turn 2 | 01/02 各占一条，04 让它们在同一张图里 |
+| **未收尾的会话** | Turn 3 | 没有 `token_count`、没有 `task_complete`——正是「实时跟随」时看到的形态 |
+
+内容是虚构的（一个叫 `logfmt` 的 Rust CLI 加 `--json` 输出），
+但**每个字段的形状都照着 01/02 的真实记录抄的**：同一句话该落两份的就落两份
+（`event_msg/agent_message` + `response_item/message`），`total_token_usage` 是全会话累计、
+`last_token_usage` 是本次单量，`sandbox_policy` 是 internally-tagged 的 `{"type": …}`。
+
+⚠️ 它是**手工构造**的，所以不能拿它当「`token_count` 能切 Step」这条启发式的经验证据——
+那个结论只算真实会话（见 SPEC §6.8）。它验的是**渲染与切分的行为**，不是协议事实。
+
+### 04 的关键期望值
+
+```
+条目数           58
+kind 计数        session1 lifecycle5 context3 state1 user7
+                 assistant10 reasoning9 tool_call7 tool_out7 usage8
+六组显示计数      输入11 · 思考9 · 行动14 · 输出10 · 元信息14   （合计 58）
+model            gpt-5.4-codex
+Turn 数 / Step 数 3 / 9
+每轮 Step 数      3 / 5 / 1
+收场序列          act act answer · act act act act answer · open
+Turn 状态         complete complete open
+sandbox 逐轮      read-only / workspace-write / workspace-write
+approval 逐轮     never / on-request / on-request
+首个 Step 累计 in 11840        末个收尾 Step 累计 in 128620
+```
 
 ## 脱敏说明
 

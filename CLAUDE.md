@@ -221,13 +221,18 @@ renderer/      React UI + JSONL 归一化（拿不到 fs / path / require）
 
 ## 5. 测试夹具
 
-`test/fixtures/` 下三份，**随仓库提交，已脱敏**（`/Users/te` → `/Users/dev`）。
+`test/fixtures/` 下四份，**随仓库提交，已脱敏**（`/Users/te` → `/Users/dev`）。
 
 | 文件 | 行数 | 来源 | 覆盖 |
 |---|---:|---|---|
 | `01-apply-patch-rejected.jsonl` | 19 | 真实会话 | `custom_tool_call` + 沙箱拒绝路径 |
 | `02-exec-command.jsonl` | 17 | 真实会话 | `function_call` + 成功路径 |
 | `03-edge-cases.jsonl` | 14 | 手工构造 | 脱敏 / 坏行 / 未知类型 / 超大内容 / 缺字段 |
+| `04-multi-turn.jsonl` | 58 | 手工构造 | 多 Turn / 逐轮冻结配置变化 / 三种 Step 收场 / 未收尾会话 |
+
+★ 04 是**唯一一份多 Turn 夹具**，README 的图视图截图用的就是它。
+它同时是唯一能显出「冻结配置是一轮一份、不是一会话一份」的样本。
+注意它是手工构造的，**不能拿来当 Step 边界启发式的经验证据**（那个结论只算真实会话）。
 
 **期望值全部在 SPEC §14.2，是实测算出的确切数字**，例如：
 
@@ -239,7 +244,7 @@ C12 索引 11 → title='→ apply_patch', callId='call_00_VGd9DAeHsvuuvIgL2BSM1
 F14 六组计数 = 输入6 · 思考2 · 行动2 · 输出4 · 元信息5 = 19
 ```
 
-改夹具 = 改验收基线，**除非有充分理由，不要动这三个文件**。
+改夹具 = 改验收基线，**除非有充分理由，不要动这四个文件**。
 
 ---
 

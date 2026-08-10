@@ -20,6 +20,7 @@ const FIXTURES = [
   '01-apply-patch-rejected.jsonl',
   '02-exec-command.jsonl',
   '03-edge-cases.jsonl',
+  '04-multi-turn.jsonl',
 ] as const;
 
 function readFixtureLines(name: string): string[] {
@@ -155,6 +156,72 @@ describe('§14.9 S 组：Turn / Step 切分', () => {
     const pre = buildGraph(fixture(FIXTURES[2])).turns[0].preamble;
     expect(pre.map((e) => e.topType)).toContain('brand_new_top_level_type');
     expect(pre.map((e) => e.payloadType)).toContain('_parse_error');
+  });
+
+  // ── 夹具 04：多 Turn。前三份夹具全是单 Turn，这一层此前只有 synth 覆盖 ──
+  describe('夹具 04（多轮）', () => {
+    const g = buildGraph(fixture(FIXTURES[3]));
+
+    it('S27 3 个 Turn / 9 个 Step，session_meta 落会话前言', () => {
+      expect(indices(g.preamble)).toEqual([0]);
+      expect(g.turns).toHaveLength(3);
+      expect(g.turns.map((t) => t.steps.length)).toEqual([3, 5, 1]);
+      expect(countSteps(g)).toBe(9);
+    });
+
+    it('S28 ★ 冻结配置逐 Turn 生效，不是全会话一份', () => {
+      // 同一个会话里 Turn 1 只读、Turn 2 起可写——这正是 TurnContext「一轮一冻结」的含义。
+      expect(g.turns.map((t) => t.sandbox)).toEqual([
+        'read-only',
+        'workspace-write',
+        'workspace-write',
+      ]);
+      expect(g.turns.map((t) => t.approval)).toEqual(['never', 'on-request', 'on-request']);
+      expect(new Set(g.turns.map((t) => t.model))).toEqual(new Set(['gpt-5.4-codex']));
+    });
+
+    it('S29 三种收场在同一份夹具里都出现', () => {
+      expect(g.turns.flatMap((t) => t.steps.map((s) => s.outcome))).toEqual([
+        'act', 'act', 'answer',
+        'act', 'act', 'act', 'act', 'answer',
+        'open',
+      ]);
+    });
+
+    it('S30 两条工具路径同时存在（apply_patch 与 exec_command）', () => {
+      expect(g.turns.flatMap((t) => t.steps.flatMap((s) => s.tools))).toEqual([
+        '→ exec_command', '→ exec_command',
+        '→ apply_patch', '→ exec_command', '→ apply_patch', '→ exec_command',
+        '→ exec_command',
+      ]);
+    });
+
+    it('S31 末轮没有 token_count / task_complete → Step open、Turn open', () => {
+      const last = g.turns[2];
+      expect(last.status).toBe('open');
+      expect(last.end).toBeUndefined();
+      expect(last.durationMs).toBeUndefined();
+      expect(last.steps[0].usage).toBeUndefined();
+      expect(last.steps[0].outcome).toBe('open');
+    });
+
+    it('S32 token 是全会话累计量，逐 Step 单调不减', () => {
+      const totals = g.turns
+        .flatMap((t) => t.steps)
+        .map((s) => s.inputTokens)
+        .filter((n): n is number => n !== undefined);
+      expect(totals).toHaveLength(8); // 9 个 Step 里末轮那个还没收尾
+      expect(totals).toEqual(totals.toSorted((a, b) => a - b));
+      expect(totals[0]).toBe(11840);
+      expect(totals[totals.length - 1]).toBe(128620);
+    });
+
+    it('S33 每个 Turn 的前言都到第一条模型产出为止', () => {
+      expect(indices(g.turns[0].preamble)).toEqual([1, 2, 3, 4, 5, 6]);
+      // 后续 Turn 不再重发 world_state / 开发者消息，前言自然短一截
+      expect(indices(g.turns[1].preamble)).toEqual([22, 23, 24, 25]);
+      expect(indices(g.turns[2].preamble)).toEqual([51, 52, 53, 54]);
+    });
   });
 
   // ── ★ 地基：一条都不能丢 ──────────────────────────────────────

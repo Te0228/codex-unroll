@@ -3,17 +3,13 @@
 **A read-only desktop viewer for [OpenAI Codex CLI](https://github.com/openai/codex) session rollout logs.**
 Turn `~/.codex/sessions/**/rollout-*.jsonl` into a searchable timeline you can actually read — and follow live while the agent runs.
 
-> **Unroll your Codex sessions** —— 把 Codex CLI 的 rollout JSONL 摊开成可读的时间线。
+**English** · [中文](./README.zh-CN.md)
 
-[English](#english) · [中文](#中文)
-
-![codex-unroll 图视图](./docs/screenshot-graph.png)
+![codex-unroll graph view](./docs/screenshot-graph.png)
 
 ---
 
-## English
-
-### The problem
+## The problem
 
 Every Codex CLI session writes a complete execution trace to
 `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-<timestamp>-<session_id>.jsonl`:
@@ -33,14 +29,27 @@ file the moment it hits one malformed line.
 
 This is not a long-list problem. It is a *few gigantic objects* problem.
 
-### What it does
+## What it does
 
-- **Graph view** — the session rebuilt as Codex actually executes it: `Session ▸ Turn ▸ Step`,
-  a vertical chain. Each Step is one model request; a Step that calls a tool feeds the result back
-  and the loop continues (▶), a Step that only replies exits the loop (●). That is the ReAct loop,
-  made visible. Press `g` to switch between graph and list.
+### Graph view
 
-![时间线视图](./docs/screenshot-timeline.png)
+The session rebuilt as Codex actually executes it: `Session ▸ Turn ▸ Step`, a vertical chain.
+Each Step is one model request; a Step that calls a tool feeds the result back into history and
+the loop continues (▶), a Step that only replies exits the loop (●). That is the ReAct loop,
+made visible. Press `g` to switch between graph and list.
+
+The hierarchy is taken from Codex's own source, `codex-rs/core/src/tasks/mod.rs` — note that
+**Task and Turn are the same level**, not two. Step boundaries are inferred from `token_count`
+events (the usage report emitted after each model request); this matched all four real samples.
+It is a heuristic, not a protocol guarantee, so the fallback is benign: a turn with no
+`token_count` degrades into a single unclosed Step with **every entry still present**.
+
+Because the frozen config is rendered per Turn, a session that changes sandbox or approval policy
+mid-conversation shows it — `read-only / never` on Turn 1, `workspace-write / on-request` on Turn 2.
+
+![timeline view](./docs/screenshot-timeline.png)
+
+### Everything else
 
 - **Timeline** — one fixed-height line per record, never wrapped. The whole session structure fits on one screen.
 - **Detail panel** — select a row, read the full content on the right with its own scrollbar. Exactly two levels of drill-down, no deeper.
@@ -51,17 +60,46 @@ This is not a long-list problem. It is a *few gigantic objects* problem.
 - **Secret redaction** — API keys, bearer tokens, JWTs, AWS and GitHub tokens masked by default, last 4 characters kept.
 - **Light / dark** — follows the system theme.
 
-![详情面板](./docs/screenshot-detail.png)
+![detail panel](./docs/screenshot-detail.png)
 
-### Robustness
+## Design note
+
+**This is a browsing problem over a few gigantic objects, not over a long list.**
+
+So the timeline carries structure only — each record is exactly one line and never wraps — and all
+content goes to the detail panel on the right, rather than being stuffed into list rows that expand.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ⌘ filename          deepseek-v4-flash · never · read-only ⚙ │
+├──────────┬──────────────────────────┬───────────────────────┤
+│ sessions │ timeline                 │ detail (on select)    │
+│ ▾openai/ │ 0 ● session start        │ custom_tool_call      │
+│  codex 2 │ 1 ● turn config never/ro │ apply_patch           │
+│ 08-04    │ 2 ● user   create hello… │ ──────────────────    │
+│ 18:28    │ 3 ○ reason I'll add…     │ *** Begin Patch       │
+│ 08-04    │ 4 ▶ tool   apply_patch ◀─│ *** Add File: hello…  │
+│ 11:13 ◀  │ 5 ▶ result rejected ⚠    │ +hi                   │
+│          │ 6 ● model  I could not…  │ *** End Patch         │
+│          │ 7 ● done   14058ms       │ ▾ raw JSON            │
+├──────────┼──────────────────────────┴───────────────────────┤
+│ 4 sess.  │ 19 rec · ●6 ○2 ▶2 ●4 ·5 · 🔍/ · ☑follow         │
+└──────────┴──────────────────────────────────────────────────┘
+```
+
+Four consequences follow: every timeline row has a fixed single-line height; the detail panel
+renders only on selection; drill-down is **exactly two levels**; and the top is a single status
+bar, with no summary-card area.
+
+## Robustness
 
 Malformed lines degrade to a visible `_parse_error` entry and parsing continues — unlike `jq`, one
 bad line never costs you the rest of the file. Unknown `payload.type` values render as `other`
 instead of being dropped, so the viewer keeps working when Codex adds new record types.
 
-![边界情况](./docs/screenshot-edge-cases.png)
+![edge cases](./docs/screenshot-edge-cases.png)
 
-### Privacy
+## Privacy
 
 Rollout files can contain your API keys and private source code. Three hard constraints:
 
@@ -80,7 +118,7 @@ Redaction happens in the normalization layer, before data reaches the UI, so `pr
 `rawPretty` are covered by construction — the raw-JSON panel is what people actually copy into
 bug reports, and it is the easiest place to leak from.
 
-### Install
+## Install
 
 No published binaries yet. Build from source:
 
@@ -93,130 +131,48 @@ npm start
 
 Requires Node 20+. macOS first; Windows and Linux should work but are untested.
 
-### Status
-
-**v0.1 feature-complete; v0.2 adds the graph view.** 415 unit tests, 100% line coverage on the
-normalization layer, end-to-end smoke suite passing 31/31 against both the dev build and the
-packaged app.
-
----
-
-## 中文
-
-### 为什么需要它
-
-Codex CLI 每次会话都会写一份完整的执行轨迹 JSONL：
-用户输入 → 提示词组装 → 模型响应 → 工具调用 → 工具结果 → token 用量。
-
-这是理解 agent 行为的**唯一真实记录**，但它没法读。实测本机 8 份 rollout：
-
-| 行数 | 体积 | 单行平均字符数 |
-|---:|---:|---:|
-| 19 | 102.8 KB | **5 538** |
-| 17 | 109.8 KB | **6 612** |
-| 9 | 100.7 KB | **11 459** |
-
-**行数极少，但每行 5 000–11 500 字符。** 一行 11 000 字符在终端里就是几十屏刷屏——
-`cat` 刷屏、`jq` 遇到一个坏行就整体中止。
-
-### 设计要点
-
-**这是"少量巨型对象"的浏览问题，不是长列表问题。**
-
-所以时间线只承载结构（每条固定一行、永不换行），内容全部交给右侧详情面板——
-而不是把大段内容塞进列表行里再展开。
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ ⌘ 文件名           deepseek-v4-flash · never · read-only  ⚙ │
-├──────────┬──────────────────────────┬───────────────────────┤
-│ 会话      │ 时间线                    │ 详情（选中才出现）      │
-│ ▾openai/ │ 0 ● 会话开始              │ custom_tool_call      │
-│  codex 2 │ 1 ● 轮次配置 never/ro     │ apply_patch           │
-│ 08-04    │ 2 ● 用户   创建 hello…    │ ──────────────────    │
-│ 18:28    │ 3 ○ 推理   I'll add…      │ *** Begin Patch       │
-│ 08-04    │ 4 ▶ 工具   apply_patch ◀──│ *** Add File: hello…  │
-│ 11:13 ◀  │ 5 ▶ 结果   rejected ⚠     │ +hi                   │
-│          │ 6 ● 模型   我没能创建…     │ *** End Patch         │
-│          │ 7 ● 完成   14058ms        │ ▾ 原始 JSON           │
-├──────────┼───────────────────────────┴───────────────────────┤
-│ 3 个会话  │ 19 条 · ●6 ○2 ▶2 ●4 ·5 · 🔍/ · ☑跟随            │
-└──────────┴───────────────────────────────────────────────────┘
-```
-
-由此推出的四条：时间线每条固定单行高；详情面板选中才渲染；下钻**恰好两层**；
-顶部只有一行状态条，不做摘要卡片区。
-
-### 功能
-
-- **图视图** — 按 Codex 真实的执行层级重建会话：`Session ▸ Turn ▸ Step` 竖向链。
-  一个 Step = 一次模型请求；调了工具就把结果写回历史、循环继续（▶），
-  只回消息就出环（●）。turn loop 是个 ReAct 循环，这样看最直观。`g` 键在图/列表间切换。
-
-  层级取自 Codex 源码 `codex-rs/core/src/tasks/mod.rs`——注意 **Task 和 Turn 是同一层**。
-  Step 边界靠 `token_count` 事件推断（每次模型请求后的用量上报），4 份样本全部吻合；
-  推断不出来就整轮退化成一个未收尾的 Step，**内容一条不少**。
-
-![时间线视图](./docs/screenshot-timeline.png)
-
-- **时间线** — 每条固定一行，一屏看完整场会话的结构
-- **详情面板** — 选中条目后在右侧展开完整内容，独立滚动
-- **分类过滤** — 输入 / 思考 / 行动 / 输出 / 元信息 / 异常，六组，带计数
-- **全文搜索** — 跨标题、内容、原始 JSON
-- **实时跟随** — agent 正在跑的时候跟着看，像 `tail -f` 但可读
-- **项目分组** — 按 git 仓库分组，组按最新活动排序
-- **密钥脱敏** — API key 默认遮蔽，保留尾 4 位便于排障
-- **深浅色** — 跟随系统
-
-### 隐私与安全
-
-rollout 文件里可能包含你的 API key 和私有代码。因此本项目有三条硬约束：
-
-| | |
-|---|---|
-| 🔒 **完全不联网** | 不做遥测、不检查更新、不上传任何数据 |
-| 📖 **只读** | 绝不写、删、改任何 rollout 文件 |
-| 🙈 **密钥脱敏** | 显示层与原始 JSON 面板同时遮蔽（`sk-••••b6b2`），**不提供"显示明文"开关** |
-
-保留尾 4 位是刻意的：排障时需要**区分是哪一把 key**。
-作者曾遇到一个 401，报错显示 `****b6cQ` 而配置里的 key 尾号是 `b6b2`——
-正是这 4 位揭示了「发出去的根本不是你配的那把 key」。全遮就丢掉了这个关键信息。
-
-### 技术栈
-
-Electron Forge · Vite · React 19 · TypeScript · Vitest · oxlint
-
-### 开发
+## Development
 
 ```bash
 npm install
-npm start                          # 开发模式
-CODEX_HOME=$(pwd)/test npm start   # 用测试夹具当数据源
-npm test                           # 415 条单测
-npm run test:cov                   # 覆盖率（src/shared/ 门槛 90%）
+npm start                          # dev mode
+CODEX_HOME=$(pwd)/test npm start   # run against the test fixtures
+npm test                           # 423 unit tests
+npm run test:cov                   # coverage (90% threshold on src/shared/)
 npm run typecheck
 npm run lint                       # oxlint
-npm run make                       # 打包 zip
+npm run make                       # package a zip
 
-# 端到端冒烟：自动走完 4 步、逐条打印 PASS/FAIL、留 4 张截图
+# End-to-end smoke: runs 5 steps, prints PASS/FAIL per assertion, leaves 5 screenshots
 CODEX_HOME=$(pwd)/test UNROLL_SHOT=/tmp/shots npm start
 ```
 
-> linter 是 **oxlint** 而非 ESLint：`typescript@7` 是原生 tsgo 版，不暴露经典编译器 API
-> （`TypeFlags` / `createProgram` 全是 `undefined`），`@typescript-eslint` 因此无法工作。
-> oxlint 自己解析 TS/JSX，不依赖 `typescript` 包。
+The linter is **oxlint**, not ESLint: `typescript@7` is the native tsgo build and does not expose
+the classic compiler API (`TypeFlags` / `createProgram` are all `undefined`), so
+`@typescript-eslint` cannot work. oxlint parses TS/JSX itself and does not depend on the
+`typescript` package.
 
-### 文档
+### Stack
 
-| 文件 | 内容 |
+Electron Forge · Vite · React 19 · TypeScript · Vitest · oxlint
+
+### Docs
+
+| File | Contents |
 |---|---|
-| [SPEC.md](./SPEC.md) | 权威设计文档：数据源规格、UI 规格、IPC 契约、安全约束、验收断言 |
-| [CLAUDE.md](./CLAUDE.md) | 给 AI 编码助手的上下文：当前进度、踩过的坑、硬约束 |
-| [test/fixtures/README.md](./test/fixtures/README.md) | 测试夹具说明 |
+| [SPEC.md](./SPEC.md) | Authoritative design doc: data-source spec, UI spec, IPC contract, security constraints, acceptance assertions |
+| [CLAUDE.md](./CLAUDE.md) | Context for AI coding assistants: current progress, known traps, hard constraints |
+| [test/fixtures/README.md](./test/fixtures/README.md) | Test fixture notes |
 
-### 分发
+## Status
 
-只发 [GitHub Release](../../releases)（zip），**不发 npm**。
+**v0.1 feature-complete; v0.2 adds the graph view.** 423 unit tests, 100% line coverage on the
+normalization layer, end-to-end smoke suite passing 38/38 against both the dev build and the
+packaged app.
+
+## Distribution
+
+[GitHub Releases](../../releases) only (zip). **Not published to npm.**
 
 ---
 
@@ -226,5 +182,4 @@ CODEX_HOME=$(pwd)/test UNROLL_SHOT=/tmp/shots npm start
 
 ---
 
-*本项目与 OpenAI 无关联。Codex 是 OpenAI 的产品。*
 *Not affiliated with OpenAI. Codex is a product of OpenAI.*

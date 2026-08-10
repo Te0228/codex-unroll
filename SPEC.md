@@ -504,7 +504,8 @@ Session
 #### 6.8.2 Step 边界怎么定：`token_count`
 
 rollout 没有显式的 Step 标记。但 `event_msg/token_count` 是**每次模型请求之后的用量上报**，
-天然就是 Step 的收尾。三份夹具 + 真实会话共 4 份样本全部吻合：
+天然就是 Step 的收尾。三份夹具 + 真实会话共 4 份样本全部吻合
+（04 号夹具是手工构造的，**不计入这条经验证据**）：
 
 ```
 turn_context ─────────────────────────────────────── Turn 开始
@@ -926,7 +927,7 @@ redact('普通文本 hello')                        // 原样返回
 | 阶段 | 内容 | 完成标准（见 §14） | 状态 |
 |---|---|---|---|
 | **M0** | 脚手架 | Electron Forge + Vite + TS | ✅ 完成 |
-| **M0.5** | 测试夹具 | 3 份脱敏夹具 + 实测期望值 | ✅ 完成 |
+| **M0.5** | 测试夹具 | 4 份脱敏夹具 + 实测期望值 | ✅ 完成 |
 | **M1** | 升 TS、接入 React、空窗口 | `npm start` 出窗口；`webPreferences` 满足 §9 | ✅ 依赖已装，代码待改 |
 | **M2** | `shared/rollout.ts` + 单测 | **§14.2 的 A/B/C/D 共 40 条断言全绿**，`src/shared/` 覆盖率 ≥90% | 待开始 |
 | **M3** | 主进程 IPC | §14.3 的 E1–E7 | 待开始 |
@@ -970,17 +971,25 @@ redact('普通文本 hello')                        // 原样返回
 
 ### 14.1 测试夹具
 
-三份文件，随仓库提交，**已脱敏**（`/Users/te` → `/Users/dev`）。
+四份文件，随仓库提交，**已脱敏**（`/Users/te` → `/Users/dev`）。
 
 | 文件 | 行数 | 体积 | 来源 | 覆盖什么 |
 |---|---:|---:|---|---|
 | `test/fixtures/01-apply-patch-rejected.jsonl` | 19 | 104 KB | 真实会话 | `custom_tool_call`(apply_patch) + **沙箱拒绝**路径 |
 | `test/fixtures/02-exec-command.jsonl` | 17 | 112 KB | 真实会话 | `function_call`(exec_command) + **成功**路径 |
 | `test/fixtures/03-edge-cases.jsonl` | 14 | 28 KB | 手工构造 | 脱敏 / 坏行 / 未知类型 / 超大内容 / 缺字段 |
+| `test/fixtures/04-multi-turn.jsonl` | 58 | 28 KB | 手工构造 | **多 Turn** / 逐轮冻结配置变化 / 三种 Step 收场 / 未收尾的会话 |
 
 > 01 与 02 之所以都保留，是因为 **apply_patch 走 `custom_tool_call`（参数在 `input`），
 > exec_command 走 `function_call`（参数在 `arguments`，是 JSON 字符串）**——
 > 两条代码路径不同，必须各有一份。
+
+> **04 补的是层级**：01/02/03 全是单 Turn，`Session ▸ Turn ▸ Step` 的中间一层
+> 此前只有 `synth()` 合成条目覆盖，而合成条目验不了渲染结果。04 还是唯一一份
+> **同一会话内冻结配置发生变化**（Turn 1 `read-only`/`never` → Turn 2
+> `workspace-write`/`on-request`）和 **末轮未收尾**（无 `token_count`、无
+> `task_complete`）的夹具——后者正是实时跟随时屏幕上的形态。
+> 详细期望值见 `test/fixtures/README.md`。
 
 ### 14.2 M2 验收 · 归一化纯函数（`src/shared/rollout.ts`）
 
@@ -1136,15 +1145,18 @@ redact('普通文本 hello')                        // 原样返回
 CODEX_HOME=$(pwd)/test UNROLL_SHOT=/tmp/shots npm start
 ```
 
-`src/main/smoke.ts` 会自动走完下面 4 步，逐条打印 PASS/FAIL 并在 `/tmp/shots` 留 4 张截图。
+`src/main/smoke.ts` 会自动走完下面 5 步，逐条打印 PASS/FAIL 并在 `/tmp/shots` 留 5 张截图。
 只有设了 `UNROLL_SHOT` 才会被动态 import，正常启动路径不加载。
 
-1. 左栏列出 3 个夹具会话（依赖 `test/sessions -> fixtures` 符号链接，随仓库提交）
-2. 打开 01 号夹具：先在**图**视图核对 §6.8 的结构（1 Turn / 2 Step / 收场 act→answer /
-   连接线 / 块尾 token / 前言默认收起 / 图里行仍等高且不横向溢出），
+1. 左栏列出 4 个夹具会话、3 个项目组（依赖 `test/sessions -> fixtures` 符号链接，随仓库提交）
+2. 打开 04 号夹具（多轮），在**图**视图核对层级的完整形态：
+   3 Turn / 9 Step / 三种收场都出现 / 冻结配置逐轮不同 / 末轮标记进行中 /
+   58 条全有归宿（48 行 + 8 块尾 + 2 Turn 尾）/ 6 条连接线 / 无横向溢出
+3. 打开 01 号夹具：先在**图**视图核对 §6.8 的结构（1 Turn / 2 Step / 收场 act→answer /
+   连接线 / 块尾 token / 前言默认展开 / 图里行仍等高且不横向溢出），
    再点到**列表**视图核对 §14.4 的 F1/F2/F3/F5/F14
-3. 选中索引 11，核对两层下钻（F7/F8/F12/F13）与 §6.7 的 JSON 树
-4. 打开 03 号夹具、逐条展开，**断言界面任何位置搜不到 `FAKEkeyDoNotUse`**
+4. 选中索引 11，核对两层下钻（F7/F8/F12/F13）与 §6.7 的 JSON 树
+5. 打开 03 号夹具、逐条展开，**断言界面任何位置搜不到 `FAKEkeyDoNotUse`**
 
 > ⚠️ 视图偏好存在 localStorage，**上一次跑留下的值会带到这一次**。
 > 所以脚本在每组断言前都**显式点到**要测的视图，不依赖默认值——
@@ -1202,10 +1214,11 @@ S8 的 `34188/263` 就是 C11）：
 | S1–S9 | 夹具 01：1 Turn / 2 Step；`session_meta` 落会话前言；turnId、冻结配置、时长首字；前言到第一条模型产出为止（7 条）；Step 1 = act + `→ apply_patch` + `16986/187`；Step 2 = answer + `34188/263`；`task_complete` 挂 Turn 不进 Step |
 | S10 | 夹具 02 走 `function_call` 路径，结构相同 |
 | S11–S12 | 夹具 03 无 `task_started`，`turn_context` 也能起 Turn；未知类型/坏行照常保留 |
-| **S13** | ★ **flatten 恒等**：三份夹具都满足 `flattenGraph(buildGraph(es))` 与 `es` 逐个引用相同 |
+| **S13** | ★ **flatten 恒等**：四份夹具都满足 `flattenGraph(buildGraph(es))` 与 `es` 逐个引用相同 |
 | S14–S24 | 退化路径：空输入 / 无 Turn 标记 / 一个 `token_count` 都没有 / 未收尾 / 第二个 `turn_context` 起新 Turn / `turn_id` 变了 / 无正文的 `token_count`（两种位置，顺序都不许乱）/ 坏行 → `hasError` |
 | S25 | `isUserInput` 认两种落盘形式；**夹具 01 命中 3 条**，其中索引 3 是 AGENTS.md 注入而非真人输入（见 §6.8.7） |
 | S26 | Turn 序号从 1 起且连续 |
+| **S27–S33** | ★ 夹具 04（多轮）：3 Turn / 9 Step，每轮 `3/5/1`；**冻结配置逐轮生效**（`read-only`→`workspace-write`）；三种收场 `act/answer/open` 同篇出现；两条工具路径同篇出现；末轮无 `token_count`/`task_complete` → Step `open` + Turn `open`；累计 token 逐 Step 单调不减（`11840` → `128620`）；每轮前言都到第一条模型产出为止 |
 
 **G 组（21 条）· `src/renderer/components/StepGraph.test.tsx`** —— 图视图组件
 
