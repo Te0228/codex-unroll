@@ -15,6 +15,7 @@ import { useMemo, useState, type ReactNode, type RefObject } from 'react';
 import type { Entry, SessionSummary } from '../../shared/types';
 import { GROUP_BY_ID, kindToGroup } from '../../shared/groups';
 import { DETAIL_TRUNCATE, formatClock, formatDuration, kindLabel } from '../format';
+import { useT } from '../i18n';
 import { RawJson } from './RawJson';
 
 export interface DetailPanelProps {
@@ -27,18 +28,22 @@ export interface DetailPanelProps {
 }
 
 export function DetailPanel({ entry, summary, onClose, onResizeStart, searchRef }: DetailPanelProps) {
+  // kindLabel 走 shared 目录取词，要显式的 locale——它不是组件，拿不到 Context
+  const { locale, t, rt } = useT();
   const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState('');
   const group = GROUP_BY_ID[kindToGroup(entry.kind)];
 
-  const full = entry.preview ?? '';
+  // preview 现在是 Text（可能是 MsgRef），截断与计数都按**译文**的长度算——
+  // 用户看到的是译文，字符数说的也必须是译文的字符数，否则「已截断至 2000」对不上。
+  const full = rt(entry.preview ?? '');
   const truncated = !expanded && full.length > DETAIL_TRUNCATE;
   const shown = truncated ? full.slice(0, DETAIL_TRUNCATE) : full;
 
   const hits = useMemo(() => countHits(shown, query), [shown, query]);
 
   return (
-    <aside className="detail" data-testid="detail-panel" aria-label="详情">
+    <aside className="detail" data-testid="detail-panel" aria-label={t('ui.detail')}>
       {/* 拖拽把手：宽度写到 --panel-w（CSSOM），不用行内 style */}
       <div
         className="panel-resizer"
@@ -50,14 +55,14 @@ export function DetailPanel({ entry, summary, onClose, onResizeStart, searchRef 
       />
 
       <div className="detail-head">
-        <span className={`g-${group.id}`} aria-label={group.label}>
+        <span className={`g-${group.id}`} aria-label={t(group.labelKey)}>
           {group.symbol}
         </span>
         <h2 className="detail-title" data-testid="detail-title">
-          {entry.title || kindLabel(entry.kind)}
+          {rt(entry.title) || kindLabel(locale, entry.kind)}
         </h2>
         <span className="detail-type">{entry.payloadType || entry.topType}</span>
-        <button className="icon-btn detail-close" onClick={onClose} aria-label="关闭详情面板">
+        <button className="icon-btn detail-close" onClick={onClose} aria-label={t('ui.closeDetail')}>
           ✕
         </button>
       </div>
@@ -67,22 +72,22 @@ export function DetailPanel({ entry, summary, onClose, onResizeStart, searchRef 
         <input
           ref={searchRef}
           data-testid="detail-search"
-          aria-label="在详情面板内搜索"
-          placeholder="在本条内搜索 ⌘F"
+          aria-label={t('ui.searchInEntry')}
+          placeholder={t('ui.searchInEntryPlaceholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        {query && <span className="hits">{hits} 处</span>}
+        {query && <span className="hits">{t('ui.hits', { n: hits })}</span>}
       </div>
 
       <div className="detail-body" data-testid="detail-body">
         <dl className="detail-meta">
-          <dt>类型</dt>
+          <dt>{t('ui.type')}</dt>
           <dd>
             {entry.topType}
             {entry.payloadType ? ` / ${entry.payloadType}` : ''}
           </dd>
-          <dt>时间</dt>
+          <dt>{t('ui.time')}</dt>
           <dd>{formatClock(entry.timestamp)}</dd>
           {entry.callId && (
             <>
@@ -104,17 +109,17 @@ export function DetailPanel({ entry, summary, onClose, onResizeStart, searchRef 
             {highlight(shown, query)}
           </pre>
         ) : (
-          <p className="detail-empty">（本条无正文，展开下方原始 JSON 查看）</p>
+          <p className="detail-empty">{t('ui.noBody')}</p>
         )}
 
         {full.length > DETAIL_TRUNCATE && (
           <p className="truncate-note">
             <span>
-              正文 {full.length} 字符
-              {truncated ? `，已截断至 ${DETAIL_TRUNCATE}` : ''}
+              {t('ui.bodyChars', { n: full.length })}
+              {truncated ? t('ui.truncatedTo', { n: DETAIL_TRUNCATE }) : ''}
             </span>
             <button className="link-btn" data-testid="expand-all" onClick={() => setExpanded((v) => !v)}>
-              {truncated ? '展开全部' : '收起'}
+              {truncated ? t('ui.expandAll') : t('ui.collapse')}
             </button>
           </p>
         )}
@@ -127,6 +132,7 @@ export function DetailPanel({ entry, summary, onClose, onResizeStart, searchRef 
 
 /** 会话头条目才展示的会话级摘要（F8：被顶部状态条砍掉的那几个值在这里） */
 function SummaryRows({ summary }: { summary: SessionSummary }) {
+  const { t } = useT();
   const tokens =
     summary.inputTokens != null || summary.outputTokens != null
       ? `${summary.inputTokens ?? 0} in / ${summary.outputTokens ?? 0} out`
@@ -147,10 +153,10 @@ function SummaryRows({ summary }: { summary: SessionSummary }) {
       <dd className="mono">{summary.cwd || '—'}</dd>
       <dt>cli</dt>
       <dd>{summary.cliVersion || '—'}</dd>
-      <dt>耗时</dt>
+      <dt>{t('ui.duration')}</dt>
       <dd>
         {formatDuration(summary.durationMs)}
-        {summary.ttftMs != null ? `（首 token ${formatDuration(summary.ttftMs)}）` : ''}
+        {summary.ttftMs != null ? t('ui.ttftParen', { value: formatDuration(summary.ttftMs) }) : ''}
       </dd>
       <dt>token</dt>
       <dd>{tokens}</dd>

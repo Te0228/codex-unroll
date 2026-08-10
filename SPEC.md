@@ -771,8 +771,12 @@ export interface Entry {
   topType: string;        // session_meta / event_msg / response_item / …
   payloadType: string;    // user_message / function_call / …
   kind: EntryKind;
-  title: string;          // "→ exec_command"
-  preview: string;        // 供折叠态展示的正文
+  // ★ 是 Text 不是 string——归一化层不产出人话，见 §15
+  //   工具调用：{ key: 'entry.toolCall', params: { tool: 'exec_command' } }
+  //   未知类型：原始类型名这个字符串（数据不是文案）
+  title: Text;
+  // 绝大多数是纯数据字符串；只有 task_complete / token_count 两处是 MsgRef
+  preview: Text;
   callId?: string;
   turnId?: string;
   raw: unknown;
@@ -800,7 +804,7 @@ export interface SessionSummary {
 
 ```ts
 parseLine(line: string, lineno: number): unknown          // 坏行降级为 _parse_error
-classify(rec: unknown): { kind; title; preview }          // 归类 + 提取展示文本
+classify(rec: unknown): { kind; title: Text; preview: Text } // 归类 + 提取展示文本
 toEntry(rec: unknown, index: number): Entry
 summarize(entries: Entry[]): SessionSummary
 ```
@@ -1257,3 +1261,93 @@ npm run test:cov      # 覆盖率
 
 > **M2 完成的定义**：§14.2 的 A/B/C/D 共 **40 条断言全绿**，覆盖率达标。
 > 在此之前不写任何 UI 代码。
+
+---
+
+## 15. 本地化
+
+支持 **英文 / 简体中文** 两种语言。契约在 `src/shared/i18n.ts`。
+
+### 15.1 核心决定：归一化层不产出人话
+
+改造前，`classify()` 把中文烤进了 `Entry`：
+
+```ts
+return { kind: 'user', title: '用户', preview: str(p.message) };
+```
+
+这在单语言下没问题，加第二语言时立刻不成立——**`Entry` 由 shared 层产出、被 main 与
+renderer 共用，而语言是渲染时才知道的用户偏好**。烤进去就意味着切语言要把整个会话重新
+归一化一遍，而归一化是这个应用最重的一步（§10 里 `toEntries` 占了打开会话耗时的大头）。
+
+所以规矩是：**数据层出 key，渲染层出人话。**
+
+```ts
+type MsgRef = { key: MsgKey; params?: MsgParams }
+type Text   = string | MsgRef        // 纯数据 或 待翻译
+resolve(locale, text) → string
+```
+
+`Entry.title` / `Entry.preview` 都是 `Text`。判断某个东西该是哪一种，只问一个问题：
+**换了语言它会变吗？**
+
+| 内容 | 类型 | 为什么 |
+|---|---|---|
+| `'用户'` / `'Model'` | `MsgRef` | 是文案 |
+| 工具名 `exec_command` | `string` | 是数据，任何语言下都这么写 |
+| 命令输出、模型原话 | `string` | 是数据 |
+| 未知记录的类型名 | `string` | ★ 是数据。看的人要靠它认出「Codex 又加了个新类型」 |
+| `'→ exec_command'` 里的箭头 | 在目录里 | 是排版，不是数据 |
+
+★ 最后一条的推论：`StepNode.tools` 存**裸工具名** `['exec_command']`，不是
+`['→ exec_command']`。此前那个箭头是把排版腌进了数据。
+
+### 15.2 两处例外：正文里也有文案
+
+`preview` 绝大多数是纯数据，只有两条记录的正文含固定文案，它们是 `MsgRef`：
+
+```
+task_complete → preview.taskComplete { duration, ttft, message }   「首字 Nms」
+token_count   → preview.tokenCount   { input, output }             「输入 N · 输出 N」
+```
+
+拼接由目录函数负责，因此**参数缺失时的降级也归目录管**：空片段整个丢掉，
+不留悬空分隔符（与 `joinParts` 同一口径）。这条有单测钉死。
+
+### 15.3 目录完整性由类型保证
+
+`ZH` 显式标注成 `Record<keyof typeof EN, Msg>`——**少一个 key 编译不过**。
+运行时另有一条单测兜底，防止有人用 `as` 绕过去。
+
+取词的兜底顺序是 `当前语言 → 英文 → key 本身`，**永不抛异常、永不返回空串**。
+显示 `ui.someKey` 很丑，但一眼能看出是漏了翻译；显示空白则违背 §6.0——
+查看器的职责是摊开，不是隐藏。
+
+### 15.4 语言怎么定
+
+| | |
+|---|---|
+| 偏好 | localStorage `unroll:locale` ∈ `'system' \| 'en' \| 'zh-CN'`，默认 `'system'` |
+| `'system'` 解析 | 渲染层按 `navigator.language`；`zh*` → `zh-CN`，`en*` → `en`，其余 → `en` |
+| 主进程 | 自己那两条文案（打开文件对话框）走 Electron 的 `app.getLocale()` |
+| 兜底 | `en`。这是**兜底值**不是「大多数人会看到的」——正常路径永远先问系统 |
+
+★ **语言不走 IPC。** `preload` 严格暴露 8 个方法（§7.3），验收 E7 用
+`Object.keys(window.unroll).length === 8` 钉死。为了传一个语言偏好去动那个契约不值得。
+
+★ 繁体（`zh-TW` / `zh-Hant`）目前落到简体目录。给繁体用户看简体，好过看英文。
+真要分繁简是再加一份目录的事，不是判定函数的事。
+
+### 15.5 测试环境的语言必须钉死
+
+jsdom 的 `navigator.language` 是 `en-US`。不钉的话，几百条中文断言会在
+「跟随系统」下全部变成英文而挂掉——而那不是功能坏了，是测试依赖了环境。
+
+所以 vitest 的 setup 把 `unroll:locale` 钉成 `zh-CN`，涉及渲染成人话的断言
+一律 `resolve('zh-CN', …)` **显式指定语言**。
+
+### 15.6 截图
+
+两份 README 各用各的语言：`README.md` 配英文界面截图，`README.zh-CN.md` 配中文界面
+截图。截图由 §14.6 的冒烟脚本在两种语言下各跑一遍生成——**README 可以分语言，
+截图不能靠翻译补**，它们指向的是同一个二进制。

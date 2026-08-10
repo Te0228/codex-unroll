@@ -14,6 +14,7 @@
  * 测试据此断言「顶层可折叠区段恰好 1 个」。
  */
 import { useState } from 'react';
+import { useT } from '../i18n';
 import { JsonTree, type ExpandMode } from './JsonTree';
 
 export interface RawJsonProps {
@@ -27,6 +28,7 @@ export interface RawJsonProps {
 type View = 'tree' | 'text';
 
 export function RawJson({ pretty, value, query = '' }: RawJsonProps) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('tree');
   const [mode, setMode] = useState<ExpandMode>('auto');
@@ -45,7 +47,7 @@ export function RawJson({ pretty, value, query = '' }: RawJsonProps) {
         onClick={() => setOpen((v) => !v)}
       >
         <span aria-hidden="true">{open ? '▾' : '▸'}</span>
-        <span>原始 JSON</span>
+        <span>{t('ui.rawJson')}</span>
       </button>
 
       {/*
@@ -54,7 +56,7 @@ export function RawJson({ pretty, value, query = '' }: RawJsonProps) {
        */}
       {query.trim() !== '' && showTree && (
         <p className="rawjson-hint" data-testid="rawjson-search-hint">
-          <span>搜索不覆盖原始 JSON，树里折叠的值也看不到</span>
+          <span>{t('ui.rawJsonSearchNote')}</span>
           <button
             type="button"
             className="link-btn"
@@ -64,7 +66,7 @@ export function RawJson({ pretty, value, query = '' }: RawJsonProps) {
               setView('text');
             }}
           >
-            在原文视图中查看
+            {t('ui.viewInText')}
           </button>
         </p>
       )}
@@ -73,9 +75,9 @@ export function RawJson({ pretty, value, query = '' }: RawJsonProps) {
         <>
           <div className="rawjson-bar">
             {canTree && (
-              <div className="rawjson-views" role="group" aria-label="原始 JSON 视图">
-                <ViewBtn id="tree" view={view} onPick={setView} label="树" />
-                <ViewBtn id="text" view={view} onPick={setView} label="原文" />
+              <div className="rawjson-views" role="group" aria-label={t('ui.rawJsonViews')}>
+                <ViewBtn id="tree" view={view} onPick={setView} label={t('ui.viewTree')} />
+                <ViewBtn id="text" view={view} onPick={setView} label={t('ui.viewText')} />
               </div>
             )}
             {showTree && (
@@ -87,7 +89,7 @@ export function RawJson({ pretty, value, query = '' }: RawJsonProps) {
                   data-testid="rawjson-expand-all"
                   onClick={() => setMode('all')}
                 >
-                  全部展开
+                  {t('ui.expandEverything')}
                 </button>
                 <button
                   type="button"
@@ -95,7 +97,7 @@ export function RawJson({ pretty, value, query = '' }: RawJsonProps) {
                   data-testid="rawjson-collapse-all"
                   onClick={() => setMode('none')}
                 >
-                  全部折叠
+                  {t('ui.collapseEverything')}
                 </button>
               </>
             )}

@@ -10,6 +10,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type { WebContents } from 'electron';
 
 import { IPC } from '../shared/types';
+import { localeFromLanguage, translate } from '../shared/i18n';
 import { readSessionFile, resolveCodexHome, scanSessions } from './sessions';
 import { startWatching, stopWatching } from './watcher';
 
@@ -61,12 +62,23 @@ export function registerIpc(): void {
   // ── 文件选择 / 在访达中显示 ────────────────────────────────
   ipcMain.handle(IPC.openFileDialog, async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender);
+    /**
+     * ★ 主进程走的是**系统语言**，不是渲染层那个偏好（§15）。
+     *   偏好存在渲染进程的 localStorage 里，主进程读不到，而 preload 严格
+     *   只有 8 个方法（§7.3 / 验收 E7）——为了两条对话框文案去加一个 IPC 通道
+     *   不值得。代价是：用户手动切到英文时，这个系统对话框仍是系统语言。
+     *   反正对话框的按钮（打开/取消）本来就是操作系统画的、跟着系统语言走，
+     *   标题跟着系统反而比跟着 app 内偏好更一致。
+     * ★ 在 handler 里现取而不是模块加载时取：app.getLocale() 要求 app ready。
+     */
+    const locale = localeFromLanguage(app.getLocale());
     const opts: Electron.OpenDialogOptions = {
-      title: '打开 rollout',
+      title: translate(locale, 'ui.openRollout'),
       properties: ['openFile'],
       filters: [
+        // Rollout JSONL 是格式名，不翻译
         { name: 'Rollout JSONL', extensions: ['jsonl'] },
-        { name: '所有文件', extensions: ['*'] },
+        { name: translate(locale, 'ui.allFiles'), extensions: ['*'] },
       ],
     };
     const res = win

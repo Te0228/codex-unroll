@@ -5,7 +5,7 @@
 
 [English](./README.md) · **中文**
 
-![codex-unroll 图视图](./docs/screenshot-graph.png)
+![codex-unroll 图视图](./docs/screenshot-graph.zh.png)
 
 ---
 
@@ -44,7 +44,7 @@ Step 边界靠 `token_count` 事件推断（每次模型请求后的用量上报
 冻结配置是**逐 Turn** 渲染的，所以一场会话中途改了沙箱或审批策略，图里直接看得出来——
 Turn 1 是 `read-only / never`，Turn 2 变成 `workspace-write / on-request`。
 
-![时间线视图](./docs/screenshot-timeline.png)
+![时间线视图](./docs/screenshot-timeline.zh.png)
 
 ### 其余
 
@@ -56,8 +56,13 @@ Turn 1 是 `read-only / never`，Turn 2 变成 `workspace-write / on-request`。
 - **项目分组** — 按 git 仓库分组，组按最新活动排序
 - **密钥脱敏** — API key、bearer token、JWT、AWS 与 GitHub token 默认遮蔽，保留尾 4 位
 - **深浅色** — 跟随系统
+- **中英双语** — 默认跟随系统语言，顶栏可切换
 
-![详情面板](./docs/screenshot-detail.png)
+> 界面语言只影响**界面**。会话内容、工具名、命令输出是数据，任何语言下都原样显示——
+> 翻译它们才是错的。同理，全文搜索搜的是你**眼前那个语言**的文案：中文界面搜「模型」、
+> 英文界面搜「Model」，「所见即可搜」才成立。
+
+![详情面板](./docs/screenshot-detail.zh.png)
 
 ## 设计要点
 
@@ -93,7 +98,7 @@ Turn 1 是 `read-only / never`，Turn 2 变成 `workspace-write / on-request`。
 不会让你丢掉整个文件的其余部分。未知的 `payload.type` 渲染成 `other` 而不是丢弃，
 所以 Codex 新增记录类型时查看器照常能用。
 
-![边界情况](./docs/screenshot-edge-cases.png)
+![边界情况](./docs/screenshot-edge-cases.zh.png)
 
 ## 隐私与安全
 
@@ -131,7 +136,7 @@ npm start
 npm install
 npm start                          # 开发模式
 CODEX_HOME=$(pwd)/test npm start   # 用测试夹具当数据源
-npm test                           # 423 条单测
+npm test                           # 460 条单测
 npm run test:cov                   # 覆盖率（src/shared/ 门槛 90%）
 npm run typecheck
 npm run lint                       # oxlint
@@ -139,7 +144,13 @@ npm run make                       # 打包 zip
 
 # 端到端冒烟：自动走完 5 步、逐条打印 PASS/FAIL、留 5 张截图
 CODEX_HOME=$(pwd)/test UNROLL_SHOT=/tmp/shots npm start
+
+# 冒烟会钉住语言（默认 zh-CN）。README 的两套截图就是这么出的：
+UNROLL_LOCALE=en CODEX_HOME=$(pwd)/test UNROLL_SHOT=/tmp/shots npm start
 ```
+
+> 冒烟**必须**钉住语言。不钉的话它会跟着跑它那台机器的系统语言走——
+> 同一份代码在作者机器上出中文截图、在 CI 上出英文截图，而两边都「通过」。
 
 > linter 是 **oxlint** 而非 ESLint：`typescript@7` 是原生 tsgo 版，不暴露经典编译器 API
 > （`TypeFlags` / `createProgram` 全是 `undefined`），`@typescript-eslint` 因此无法工作。
@@ -159,8 +170,8 @@ Electron Forge · Vite · React 19 · TypeScript · Vitest · oxlint
 
 ## 状态
 
-**v0.1 功能完成；v0.2 加了图视图。** 423 条单测，归一化层行覆盖率 100%，
-端到端冒烟在开发构建与打包产物上都是 38/38 通过。
+**v0.1 功能完成；v0.2 加了图视图；v0.3 加了中英双语。** 460 条单测，
+归一化层行覆盖率 100%，端到端冒烟在中英两种语言下各 41/41 通过。
 
 ## 分发
 

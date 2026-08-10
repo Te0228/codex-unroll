@@ -25,15 +25,22 @@ import { Fragment, memo, useState } from 'react';
 import type { Entry } from '../../shared/types';
 import type { SessionGraph, StepNode, StepOutcome, TurnNode } from '../../shared/steps';
 import { isUserInput } from '../../shared/steps';
+import type { MsgKey } from '../../shared/i18n';
 import { TimelineRow } from './TimelineRow';
 import { useAutoScroll } from '../hooks/useAutoScroll';
+import { useT } from '../i18n';
 import { formatDuration } from '../format';
 
-/** Step 的收场：符号独立于颜色，灰度下也要能区分（同 §6.3 / F21 的原则） */
-const OUTCOME: Record<StepOutcome, { symbol: string; label: string }> = {
-  act: { symbol: '▶', label: '调用工具' },
-  answer: { symbol: '●', label: '收工' },
-  open: { symbol: '·', label: '未收尾' },
+/**
+ * Step 的收场：符号独立于颜色，灰度下也要能区分（同 §6.3 / F21 的原则）。
+ *
+ * ★ 符号留在表里、文案换成 key：符号是**排版**，两种语言下都是这三个字形，
+ *   进目录只会多一份永远同步不了的复制品。
+ */
+const OUTCOME: Record<StepOutcome, { symbol: string; labelKey: MsgKey }> = {
+  act: { symbol: '▶', labelKey: 'outcome.act' },
+  answer: { symbol: '●', labelKey: 'outcome.answer' },
+  open: { symbol: '·', labelKey: 'outcome.open' },
 };
 
 export interface StepGraphProps {
@@ -56,6 +63,7 @@ export function StepGraph({
   total,
   emptyHint,
 }: StepGraphProps) {
+  const { t } = useT();
   const { scrollRef, onScroll } = useAutoScroll(total, selectedIndex);
   const empty = graph.turns.length === 0 && graph.preamble.length === 0;
 
@@ -70,7 +78,7 @@ export function StepGraph({
          */}
         {!empty && visible.size === 0 && (
           <p className="sessions-empty" data-testid="graph-empty">
-            {emptyHint ?? '没有匹配的条目'}
+            {emptyHint ?? t('ui.noMatchingEntries')}
           </p>
         )}
 
@@ -90,7 +98,7 @@ export function StepGraph({
           />
         ))}
 
-        {empty && <p className="sessions-empty">没有可展示的条目</p>}
+        {empty && <p className="sessions-empty">{t('ui.nothingToShow')}</p>}
       </div>
     </div>
   );
@@ -106,16 +114,18 @@ interface TurnProps {
 }
 
 function Turn({ turn, visible, selectedIndex, onSelect }: TurnProps) {
+  const { t } = useT();
   const config = [turn.model, turn.effort, turn.approval, turn.sandbox].filter(Boolean).join(' · ');
   const end = turn.end;
 
   return (
     <section className="turn" data-testid="turn" data-turn={turn.no} data-status={turn.status}>
       <header className="turn-head">
-        <span className="turn-no">Turn {turn.no}</span>
+        {/* config 是模型名/审批模式这些**纯数据**，原样显示，不进目录 */}
+        <span className="turn-no">{t('ui.turnNo', { no: turn.no })}</span>
         {config && <span className="turn-config">{config}</span>}
         <span className="spacer" />
-        <span className="turn-steps">{turn.steps.length} step</span>
+        <span className="turn-steps">{t('ui.stepCount', { n: turn.steps.length })}</span>
       </header>
 
       <TurnPreamble
@@ -134,19 +144,21 @@ function Turn({ turn, visible, selectedIndex, onSelect }: TurnProps) {
                 <span className="step-arrow" aria-hidden="true">
                   ↓
                 </span>
-                {step.outcome === 'act' ? '工具结果写回历史，再问一次模型' : '继续'}
+                {step.outcome === 'act' ? t('ui.stepLinkAct') : t('ui.stepLinkContinue')}
               </p>
             )}
           </Fragment>
         ))}
-        {turn.steps.length === 0 && <p className="step-empty">这一轮没有模型产出</p>}
+        {turn.steps.length === 0 && <p className="step-empty">{t('ui.turnNoOutput')}</p>}
       </div>
 
       <footer className="turn-foot">
         {turn.status === 'complete' ? (
           <>
             <span>{formatDuration(turn.durationMs)}</span>
-            {turn.ttftMs != null && <span>首字 {formatDuration(turn.ttftMs)}</span>}
+            {turn.ttftMs != null && (
+              <span>{t('ui.ttft', { value: formatDuration(turn.ttftMs) })}</span>
+            )}
             {end && (
               <button
                 type="button"
@@ -159,7 +171,7 @@ function Turn({ turn, visible, selectedIndex, onSelect }: TurnProps) {
             )}
           </>
         ) : (
-          <span className="turn-open">进行中 · 未见 task_complete</span>
+          <span className="turn-open">{t('ui.turnOpen')}</span>
         )}
       </footer>
     </section>
@@ -181,6 +193,7 @@ function Turn({ turn, visible, selectedIndex, onSelect }: TurnProps) {
  *    所以不打 `data-drill`。真正的下钻仍然只有「图 → 详情面板」这一次。
  */
 function TurnPreamble({ entries, visible, selectedIndex, onSelect }: Omit<TurnProps, 'turn'> & { entries: Entry[] }) {
+  const { t } = useT();
   const [open, setOpen] = useState(true);
   if (entries.length === 0) return null;
 
@@ -207,7 +220,9 @@ function TurnPreamble({ entries, visible, selectedIndex, onSelect }: Omit<TurnPr
           onClick={() => setOpen((v) => !v)}
         >
           <span aria-hidden="true">{open ? '▾' : '▸'}</span>
-          {open ? `收起上下文 ${foldable} 条` : `展开上下文 ${foldable} 条`}
+          {open
+            ? t('ui.collapseContext', { n: foldable })
+            : t('ui.expandContext', { n: foldable })}
         </button>
       )}
     </div>
@@ -224,6 +239,7 @@ interface StepProps {
 }
 
 const Step = memo(function Step({ step, visible, selectedIndex, onSelect }: StepProps) {
+  const { t } = useT();
   const o = OUTCOME[step.outcome];
   const shown = step.entries.filter((e) => visible.has(e.index));
   const filtered = step.entries.length - shown.length;
@@ -242,11 +258,25 @@ const Step = memo(function Step({ step, visible, selectedIndex, onSelect }: Step
         <span className="step-node" aria-hidden="true">
           {step.no}
         </span>
-        <span className="step-no">Step {step.no}</span>
-        {step.tools.length > 0 && <span className="step-tools">{step.tools.join(' · ')}</span>}
+        <span className="step-no">{t('ui.stepNo', { no: step.no })}</span>
+        {/*
+         * ★ `step.tools` 是**裸工具名**（`exec_command`），箭头在这里补。
+         *   数据层只记「调了谁」，`→` 是排版决定——它跟时间线上工具调用行的
+         *   标题共用 `entry.toolCall` 这一条 key，两处的样子才不会各走各的。
+         */}
+        {step.tools.length > 0 && (
+          <span className="step-tools">
+            {step.tools
+              // 名字缺失时 `tools` 里是空串（条目数要与 tool_call 一一对应，
+              // 不能过滤掉——`outcomeOf` 靠它的长度判「这一步调没调工具」）。
+              // 空名走「无名工具」那条完整文案，别渲染出一个空 chip。
+              .map((tool) => (tool ? t('entry.toolCall', { tool }) : t('entry.toolCallUnnamed')))
+              .join(' · ')}
+          </span>
+        )}
         <span className="spacer" />
         <span className={`step-outcome o-${step.outcome}`}>
-          <span aria-hidden="true">{o.symbol}</span> {o.label}
+          <span aria-hidden="true">{o.symbol}</span> {t(o.labelKey)}
         </span>
       </header>
 
@@ -268,8 +298,8 @@ const Step = memo(function Step({ step, visible, selectedIndex, onSelect }: Step
             />
           ),
         )}
-        {filtered > 0 && <p className="step-filtered">{filtered} 条被过滤</p>}
-        {step.entries.length === 0 && <p className="step-filtered">这一步没有可见产出</p>}
+        {filtered > 0 && <p className="step-filtered">{t('ui.filteredOut', { n: filtered })}</p>}
+        {step.entries.length === 0 && <p className="step-filtered">{t('ui.stepNoOutput')}</p>}
       </div>
 
       {usage && (

@@ -11,6 +11,8 @@
  * `type` 作为二级判别式，其余三种没有。
  */
 import type { Entry, EntryKind, RolloutRecord, SessionSummary } from './types';
+import type { MsgParams, Text } from './i18n';
+import { ref } from './i18n';
 import { redactDeep } from './redact';
 
 /** 坏行的判别式，同时占据顶层 type 与 payload.type（验收 A4） */
@@ -115,59 +117,79 @@ export function parseLine(line: string, lineno: number): RolloutRecord {
 // classify
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * ★ `title` / `preview` 是 `Text` 而不是 `string`：**这一层不产出人话**。
+ *   固定文案给出 `MsgRef`（key + 参数），纯数据（工具名、命令输出、模型名）
+ *   保持字符串原样。理由见 shared/i18n.ts 的文件头。
+ */
 export interface Classification {
   kind: EntryKind;
-  title: string;
-  preview: string;
+  title: Text;
+  preview: Text;
   callId?: string;
   turnId?: string;
+}
+
+/** 只把有值的键塞进参数表——`MsgParams` 不接受 undefined，目录函数自己判缺省。 */
+function params(entries: Record<string, string | number | undefined>): MsgParams {
+  const out: MsgParams = {};
+  for (const [k, v] of Object.entries(entries)) if (v !== undefined && v !== '') out[k] = v;
+  return out;
 }
 
 /** 返回 null 表示「不认识这个 payload.type」，交给上层降级为 'other' */
 function classifyEventMsg(p: Record<string, unknown>, payloadType: string): Classification | null {
   switch (payloadType) {
     case 'user_message':
-      return { kind: 'user', title: '用户', preview: str(p.message) };
+      return { kind: 'user', title: ref('entry.user'), preview: str(p.message) };
     case 'agent_message':
-      return { kind: 'assistant', title: '模型', preview: str(p.message) };
+      return { kind: 'assistant', title: ref('entry.assistant'), preview: str(p.message) };
     case 'task_started':
       return {
         kind: 'lifecycle',
-        title: '任务开始',
+        title: ref('entry.taskStarted'),
         preview: joinParts([str(p.turn_id), str(p.collaboration_mode_kind)]),
       };
-    case 'task_complete': {
-      const duration = num(p.duration_ms);
-      const ttft = num(p.time_to_first_token_ms);
+    case 'task_complete':
       return {
         kind: 'lifecycle',
-        title: '完成',
-        preview: joinParts([
-          duration === undefined ? '' : `${duration}ms`,
-          ttft === undefined ? '' : `首字 ${ttft}ms`,
-          str(p.last_agent_message),
-        ]),
+        title: ref('entry.taskComplete'),
+        // 「首字 Nms」那半句是文案，拼接交给目录；数字与模型原话是数据，走参数
+        preview: ref(
+          'preview.taskComplete',
+          params({
+            duration: num(p.duration_ms),
+            ttft: num(p.time_to_first_token_ms),
+            message: str(p.last_agent_message),
+          }),
+        ),
       };
-    }
     case 'token_count': {
       const total = obj(obj(p.info).total_token_usage);
-      const input = num(total.input_tokens);
-      const output = num(total.output_tokens);
       return {
         kind: 'usage',
-        title: '用量',
-        preview: joinParts([
-          input === undefined ? '' : `输入 ${input}`,
-          output === undefined ? '' : `输出 ${output}`,
-        ]),
+        title: ref('entry.usage'),
+        preview: ref(
+          'preview.tokenCount',
+          params({ input: num(total.input_tokens), output: num(total.output_tokens) }),
+        ),
       };
     }
     case 'error':
     case 'stream_error':
-      return { kind: 'error', title: '错误', preview: str(p.message) || JSON.stringify(p) };
+      return { kind: 'error', title: ref('entry.error'), preview: str(p.message) || JSON.stringify(p) };
     default:
       return null;
   }
+}
+
+/**
+ * 工具调用的标题。工具名是**数据**（走参数），箭头是排版（在目录里）。
+ * 名字缺失时换一条完整文案，而不是给参数塞兜底词——目录函数没法再翻译一次。
+ */
+function toolTitle(name: unknown): Text {
+  const tool = str(name);
+  return tool ? ref('entry.toolCall', { tool }) : ref('entry.toolCallUnnamed');
 }
 
 /** 同上，null → 降级 'other' */
@@ -176,9 +198,16 @@ function classifyResponseItem(p: Record<string, unknown>, payloadType: string): 
     case 'message': {
       const role = str(p.role);
       const isAssistant = role === 'assistant';
-      const title = isAssistant ? '模型' : role === 'developer' ? '开发者' : role === 'system' ? '系统' : '用户';
+      // ★ 标题分四种角色，而 kind 只有两种——developer / system 在 kind 上被
+      //   并进 'user'（§6.3 输入组），所以标题不能从 kind 反推，必须自己判。
+      const title = isAssistant
+        ? ref('entry.assistant')
+        : role === 'developer'
+          ? ref('entry.developer')
+          : role === 'system'
+            ? ref('entry.system')
+            : ref('entry.user');
       return {
-        // user / developer / system 都算「进入 agent 的东西」→ kind='user'（§6.3 输入组）
         kind: isAssistant ? 'assistant' : 'user',
         title,
         preview: textFromContent(p.content),
@@ -187,18 +216,18 @@ function classifyResponseItem(p: Record<string, unknown>, payloadType: string): 
     case 'reasoning':
       return {
         kind: 'reasoning',
-        title: '推理',
+        title: ref('entry.reasoning'),
         preview: textFromContent(p.content) || textFromContent(p.summary),
       };
     // 两条工具路径：function_call 参数在 arguments（JSON 字符串），
     // custom_tool_call 参数在 input（纯文本）。都要支持。
     case 'function_call':
-      return { kind: 'tool_call', title: `→ ${str(p.name) || '工具'}`, preview: prettyArgs(p.arguments) };
+      return { kind: 'tool_call', title: toolTitle(p.name), preview: prettyArgs(p.arguments) };
     case 'custom_tool_call':
-      return { kind: 'tool_call', title: `→ ${str(p.name) || '工具'}`, preview: str(p.input) };
+      return { kind: 'tool_call', title: toolTitle(p.name), preview: str(p.input) };
     case 'function_call_output':
     case 'custom_tool_call_output':
-      return { kind: 'tool_out', title: '← 结果', preview: outputText(p.output) };
+      return { kind: 'tool_out', title: ref('entry.toolOut'), preview: outputText(p.output) };
     default:
       return null;
   }
@@ -224,7 +253,7 @@ export function classify(rec: RolloutRecord): Classification {
     const lineno = num(p.lineno);
     return {
       kind: 'error',
-      title: lineno === undefined ? '解析失败' : `解析失败（第 ${lineno} 行）`,
+      title: lineno === undefined ? ref('entry.parseError') : ref('entry.parseErrorAt', { lineno }),
       preview: str(p.text),
     };
   }
@@ -233,13 +262,13 @@ export function classify(rec: RolloutRecord): Classification {
     case 'session_meta':
       return withIds({
         kind: 'session',
-        title: '会话开始',
+        title: ref('entry.sessionStart'),
         preview: joinParts([str(p.cwd), str(p.cli_version), str(p.model_provider)]),
       });
     case 'turn_context':
       return withIds({
         kind: 'context',
-        title: '轮次配置',
+        title: ref('entry.turnContext'),
         preview: joinParts([
           str(p.model),
           str(p.effort),
@@ -250,7 +279,7 @@ export function classify(rec: RolloutRecord): Classification {
     case 'world_state':
       return withIds({
         kind: 'state',
-        title: '世界状态',
+        title: ref('entry.worldState'),
         preview: JSON.stringify(p, null, 2),
       });
     case 'event_msg': {
@@ -267,10 +296,12 @@ export function classify(rec: RolloutRecord): Classification {
       break;
   }
 
-  // 未知顶层 type / 未知 payload.type：降级为「其它」，payloadType 原样保留在 Entry 上
+  // 未知顶层 type / 未知 payload.type：降级为「其它」，payloadType 原样保留在 Entry 上。
+  // ★ 标题优先回显**原始类型名**——它是数据不是文案，任何语言下都该原样显示，
+  //   看的人要靠它认出「Codex 又加了个新记录类型」。两个都没有才退到文案。
   return withIds({
     kind: 'other',
-    title: payloadType || topType || '未知',
+    title: payloadType || topType || ref('entry.unknown'),
     preview: JSON.stringify(p, null, 2),
   });
 }

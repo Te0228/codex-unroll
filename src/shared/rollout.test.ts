@@ -5,14 +5,33 @@
  * 期望值是从 test/fixtures/ 实测算出来的确切数字。
  * **实现与期望值对不上，是实现错了，不要改期望值。**
  * 尤其：C2 与 D2 的 assistant 计数是 4 与 2，这是真实差异，不是笔误。
+ *
+ * ── 本地化之后，title / preview 的断言口径 ─────────────────────────
+ * 归一化层**不产出人话**（见 shared/i18n.ts）：固定文案是 `MsgRef`（key + 参数），
+ * 纯数据（工具名、命令输出、原始类型名）仍是字符串。所以断言分两路：
+ *   · 结构：`toEqual({ key: 'entry.toolCall', params: { tool: 'apply_patch' } })`
+ *     —— 粒度和从前的 `toBe('→ apply_patch')` 一样，一条都没放松。
+ *   · 人话：需要验证拼接对不对时，用 `resolve('zh-CN', …)` **显式指定语言**
+ *     再和原来的中文期望值比对，绝不依赖环境默认语言。
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { kindToGroup } from './groups';
+import { resolve } from './i18n';
+import type { Text } from './i18n';
 import { PARSE_ERROR, classify, parseLine, summarize, toEntries, toEntry } from './rollout';
 import type { DisplayGroup, Entry, EntryKind, RolloutRecord } from './types';
+
+/**
+ * 断言这条 `Text` 是**纯数据字符串**（不是待翻译的 key），并把它取出来。
+ * 顺带把「命令输出 / patch 正文这类东西不该被塞进目录」这件事钉住。
+ */
+function plain(t: Text): string {
+  expect(typeof t).toBe('string');
+  return t as string;
+}
 
 function readFixtureLines(name: string): string[] {
   const path = fileURLToPath(new URL(`../../test/fixtures/${name}`, import.meta.url));
@@ -70,8 +89,11 @@ describe('A. 解析健壮性 —— 03-edge-cases.jsonl', () => {
     expect(bad).toHaveLength(1);
     expect(bad[0].kind).toBe('error');
     expect(bad[0].payloadType).toBe('_parse_error');
+    // 行号是数据，走参数；「解析失败（第 N 行）」那句话是文案，留在目录里
+    expect(bad[0].title).toEqual({ key: 'entry.parseErrorAt', params: { lineno: 7 } });
+    expect(resolve('zh-CN', bad[0].title)).toBe('解析失败（第 7 行）');
     // 原文保留在 preview 里
-    expect(bad[0].preview).toContain('未闭合');
+    expect(plain(bad[0].preview)).toContain('未闭合');
   });
 
   it('A5 · 坏行之后的记录照常解析（第 8 行之后的条目数 = 6）', () => {
@@ -97,7 +119,9 @@ describe('A. 解析健壮性 —— 03-edge-cases.jsonl', () => {
     const e = EDGE[8];
     expect(e.topType).toBe('event_msg');
     expect(e.payloadType).toBe('');
-    expect(e.title.length).toBeGreaterThan(0);
+    // 未知类型的标题回显**原始类型名**，它是数据不是文案：任何语言下都原样显示
+    expect(plain(e.title)).toBe('event_msg');
+    expect(plain(e.title).length).toBeGreaterThan(0);
     expect(e.kind).toBe('other');
   });
 
@@ -169,23 +193,33 @@ describe('C. 分类与摘要 —— 01-apply-patch-rejected.jsonl', () => {
   it('C11 · summary.inputTokens / outputTokens = 34188 / 263（取最后一条 token_count）', () => {
     expect(s.inputTokens).toBe(34188);
     expect(s.outputTokens).toBe(263);
+    // 同一组数字在条目上的样子：参数是数据，「输入 / 输出」是文案
+    const last = F01.findLast((e) => e.payloadType === 'token_count')!;
+    expect(last.preview).toEqual({
+      key: 'preview.tokenCount',
+      params: { input: 34188, output: 263 },
+    });
+    expect(resolve('zh-CN', last.preview)).toBe('输入 34188 · 输出 263');
   });
 
   it('C12 · 索引 11 是工具调用 apply_patch', () => {
     const e = F01[11];
     expect(e.kind).toBe('tool_call');
-    expect(e.title).toBe('→ apply_patch');
+    // 工具名是数据（走参数），箭头是排版（在目录里）
+    expect(e.title).toEqual({ key: 'entry.toolCall', params: { tool: 'apply_patch' } });
+    expect(resolve('zh-CN', e.title)).toBe('→ apply_patch');
     expect(e.callId).toBe('call_00_VGd9DAeHsvuuvIgL2BSM1663');
     // custom_tool_call 的参数在 input，是纯文本 patch
     expect(e.payloadType).toBe('custom_tool_call');
-    expect(e.preview.startsWith('*** Begin Patch')).toBe(true);
+    expect(plain(e.preview).startsWith('*** Begin Patch')).toBe(true);
   });
 
   it('C13 · 索引 12 是工具结果，preview 以拒绝信息开头', () => {
     const e = F01[12];
     expect(e.kind).toBe('tool_out');
+    expect(e.title).toEqual({ key: 'entry.toolOut' });
     expect(
-      e.preview.startsWith('patch rejected: writing is blocked by read-only sandbox'),
+      plain(e.preview).startsWith('patch rejected: writing is blocked by read-only sandbox'),
     ).toBe(true);
   });
 
@@ -234,22 +268,23 @@ describe('D. 另一条工具路径 —— 02-exec-command.jsonl', () => {
   it('D5 · 索引 9 是工具调用 exec_command', () => {
     const e = F02[9];
     expect(e.kind).toBe('tool_call');
-    expect(e.title).toBe('→ exec_command');
+    expect(e.title).toEqual({ key: 'entry.toolCall', params: { tool: 'exec_command' } });
+    expect(resolve('zh-CN', e.title)).toBe('→ exec_command');
     expect(e.callId).toBe('call_00_ZcxhkqWcZL0PNkjMBG5H1809');
   });
 
   it('D6 · function_call.arguments 二次解析后展示为格式化对象，而非转义字符串', () => {
     const e = F02[9];
     expect(e.payloadType).toBe('function_call');
-    expect(e.preview).toBe(JSON.stringify({ cmd: 'ls -la' }, null, 2));
-    expect(e.preview).toContain('\n'); // 已格式化
-    expect(e.preview).not.toContain('\\"'); // 不是转义后的 JSON 字符串
+    expect(plain(e.preview)).toBe(JSON.stringify({ cmd: 'ls -la' }, null, 2));
+    expect(plain(e.preview)).toContain('\n'); // 已格式化
+    expect(plain(e.preview)).not.toContain('\\"'); // 不是转义后的 JSON 字符串
   });
 
   it('D7 · 索引 10 工具结果，preview 以 "Chunk ID:" 开头', () => {
     const e = F02[10];
     expect(e.kind).toBe('tool_out');
-    expect(e.preview.startsWith('Chunk ID:')).toBe(true);
+    expect(plain(e.preview).startsWith('Chunk ID:')).toBe(true);
   });
 });
 
@@ -323,10 +358,15 @@ describe('classify · 各分支兜底', () => {
     expect(mk('developer').kind).toBe('user');
     expect(mk('system').kind).toBe('user');
     expect(mk('assistant').kind).toBe('assistant');
-    expect(mk('assistant').title).toBe('模型');
-    expect(mk('developer').title).toBe('开发者');
-    expect(mk('system').title).toBe('系统');
-    expect(mk('').title).toBe('用户');
+    // ★ 标题分四种角色，kind 只有两种——所以标题不能从 kind 反推，必须逐个钉住
+    expect(mk('assistant').title).toEqual({ key: 'entry.assistant' });
+    expect(mk('developer').title).toEqual({ key: 'entry.developer' });
+    expect(mk('system').title).toEqual({ key: 'entry.system' });
+    expect(mk('').title).toEqual({ key: 'entry.user' });
+    // 渲染成人话仍是原来那四个词
+    expect(['assistant', 'developer', 'system', ''].map((r) => resolve('zh-CN', mk(r).title))).toEqual(
+      ['模型', '开发者', '系统', '用户'],
+    );
   });
 
   it('event_msg 的生命周期 / 用量 / 错误分支', () => {
@@ -338,13 +378,22 @@ describe('classify · 各分支兜底', () => {
       payload: { type: 'task_complete', duration_ms: 12, time_to_first_token_ms: 3 },
     });
     expect(done.kind).toBe('lifecycle');
-    expect(done.preview).toContain('12ms');
+    expect(done.title).toEqual({ key: 'entry.taskComplete' });
+    // 数字是数据，「首字 Nms」那半句是文案：归一化层只给参数，拼接交给目录
+    expect(done.preview).toEqual({
+      key: 'preview.taskComplete',
+      params: { duration: 12, ttft: 3 },
+    });
+    expect(resolve('zh-CN', done.preview)).toContain('12ms');
+    expect(resolve('zh-CN', done.preview)).toBe('12ms · 首字 3ms');
     const usage = c({
       type: 'event_msg',
       payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 5, output_tokens: 6 } } },
     });
     expect(usage.kind).toBe('usage');
-    expect(usage.preview).toBe('输入 5 · 输出 6');
+    expect(usage.title).toEqual({ key: 'entry.usage' });
+    expect(usage.preview).toEqual({ key: 'preview.tokenCount', params: { input: 5, output: 6 } });
+    expect(resolve('zh-CN', usage.preview)).toBe('输入 5 · 输出 6');
     expect(c({ type: 'event_msg', payload: { type: 'error', message: 'boom' } }).kind).toBe('error');
     expect(c({ type: 'event_msg', payload: { type: 'stream_error' } }).kind).toBe('error');
   });
@@ -359,11 +408,14 @@ describe('classify · 各分支兜底', () => {
   });
 
   it('工具调用缺 name 时 title 有兜底；arguments 不是 JSON 时按纯文本展示', () => {
+    // 名字缺失时换的是**另一条完整文案**，而不是往参数里塞兜底词
+    // ——目录函数拿不到 translate，参数里的东西没法再翻一次
     const fc = c({ type: 'response_item', payload: { type: 'function_call', arguments: 'not json' } });
-    expect(fc.title).toBe('→ 工具');
+    expect(fc.title).toEqual({ key: 'entry.toolCallUnnamed' });
+    expect(resolve('zh-CN', fc.title)).toBe('→ 工具');
     expect(fc.preview).toBe('not json');
     const ctc = c({ type: 'response_item', payload: { type: 'custom_tool_call' } });
-    expect(ctc.title).toBe('→ 工具');
+    expect(ctc.title).toEqual({ key: 'entry.toolCallUnnamed' });
     // arguments 已经是对象时直接格式化
     const objArgs = c({
       type: 'response_item',
@@ -405,7 +457,19 @@ describe('classify · 各分支兜底', () => {
 
   it('空记录不崩', () => {
     expect(c({ type: '' }).kind).toBe('other');
-    expect(c({ type: '' }).title).toBe('未知');
+    // 连原始类型名都没有，才退到文案
+    expect(c({ type: '' }).title).toEqual({ key: 'entry.unknown' });
+    expect(resolve('zh-CN', c({ type: '' }).title)).toBe('未知');
+  });
+
+  it('未知类型的 title 是**原始类型名这个字符串**，不是待翻译的 key', () => {
+    // payloadType 优先——看的人要靠它认出「Codex 又加了个新记录类型」
+    expect(
+      c({ type: 'response_item', payload: { type: 'some_future_item_type_v9' } }).title,
+    ).toBe('some_future_item_type_v9');
+    expect(c({ type: 'brand_new_top_level_type', payload: {} }).title).toBe(
+      'brand_new_top_level_type',
+    );
   });
 });
 

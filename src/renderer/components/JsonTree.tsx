@@ -21,6 +21,7 @@ import { useMemo } from 'react';
 import { JsonView, allExpanded, collapseAllNested, defaultStyles } from 'react-json-view-lite';
 import 'react-json-view-lite/dist/index.css';
 import { EXPAND_LEVELS, expandNestedJson } from '../jsonTree';
+import { useT } from '../i18n';
 
 /** 展开策略。「全部展开 / 全部折叠」靠换 key 重挂载生效（预设只在挂载时求值）。 */
 export type ExpandMode = 'auto' | 'all' | 'none';
@@ -54,11 +55,27 @@ const STYLE = {
   noQuotesForStringValues: false,
   stringifyStringValues: false,
   quotesForFieldNames: false,
-  // 注意库里这个键就是拼错的 ariaLables，别「顺手修正」
-  ariaLables: { collapseJson: '折叠', expandJson: '展开' },
 };
 
 export function JsonTree({ value, mode }: JsonTreeProps) {
+  const { t } = useT();
+
+  /**
+   * 展开/折叠按钮的读屏文案要跟着语言走，所以 `style` 不能全塞进模块级常量了。
+   * 只有这两条随语言变，其余类名照旧从 STYLE 拿。
+   *
+   * ⚠️ 注意库里这个键就是拼错的 `ariaLables`，别「顺手修正」。
+   * ★ 这里 memo 只是省几次对象分配，**不像 `shouldExpandNode` 那样是正确性要求**：
+   *   库只对 `shouldExpandNode` 挂了 useEffect，`style` 变引用不会重置展开状态。
+   */
+  const style = useMemo(
+    () => ({
+      ...STYLE,
+      ariaLables: { collapseJson: t('ui.jsonCollapse'), expandJson: t('ui.jsonExpand') },
+    }),
+    [t],
+  );
+
   // 预处理：把 JSON 字符串换成解析后的子树（F19）。库不管这件事。
   const { data, nested } = useMemo(() => {
     const marks = new WeakSet<object>();
@@ -82,9 +99,9 @@ export function JsonTree({ value, mode }: JsonTreeProps) {
     <JsonView
       key={mode}
       data={data as object}
-      style={STYLE}
+      style={style}
       shouldExpandNode={shouldExpandNode}
-      aria-label="原始 JSON 树"
+      aria-label={t('ui.rawJsonTree')}
     />
   );
 }

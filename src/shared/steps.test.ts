@@ -113,7 +113,9 @@ describe('§14.9 S 组：Turn / Step 切分', () => {
       expect(indices(s.entries)).toEqual([8, 9, 10, 11, 12]);
       expect(s.usage?.index).toBe(13);
       expect(s.outcome).toBe('act');
-      expect(s.tools).toEqual(['→ apply_patch']);
+      // ★ 存**裸工具名**，箭头是排版由渲染层加（此前这里直接拿 entry.title，
+      //   等于把排版腌进了数据）
+      expect(s.tools).toEqual(['apply_patch']);
       expect([s.inputTokens, s.outputTokens]).toEqual([16986, 187]);
       expect(s.hasError).toBe(false);
     });
@@ -138,7 +140,7 @@ describe('§14.9 S 组：Turn / Step 切分', () => {
     const g = buildGraph(fixture(FIXTURES[1]));
     expect(g.turns).toHaveLength(1);
     expect(g.turns[0].steps).toHaveLength(2);
-    expect(g.turns[0].steps[0].tools).toEqual(['→ exec_command']);
+    expect(g.turns[0].steps[0].tools).toEqual(['exec_command']);
     expect(g.turns[0].steps[0].outcome).toBe('act');
     expect(g.turns[0].steps[1].outcome).toBe('answer');
   });
@@ -149,7 +151,7 @@ describe('§14.9 S 组：Turn / Step 切分', () => {
     expect(g.turns).toHaveLength(1);
     expect(g.turns[0].turnId).toBe('turn-1');
     expect(g.turns[0].steps).toHaveLength(1);
-    expect(g.turns[0].steps[0].tools).toEqual(['→ shell']);
+    expect(g.turns[0].steps[0].tools).toEqual(['shell']);
   });
 
   it('S12 未知类型/坏行落在 Turn 前言，照常保留不丢弃（§3.4）', () => {
@@ -190,9 +192,9 @@ describe('§14.9 S 组：Turn / Step 切分', () => {
 
     it('S30 两条工具路径同时存在（apply_patch 与 exec_command）', () => {
       expect(g.turns.flatMap((t) => t.steps.flatMap((s) => s.tools))).toEqual([
-        '→ exec_command', '→ exec_command',
-        '→ apply_patch', '→ exec_command', '→ apply_patch', '→ exec_command',
-        '→ exec_command',
+        'exec_command', 'exec_command',
+        'apply_patch', 'exec_command', 'apply_patch', 'exec_command',
+        'exec_command',
       ]);
     });
 
@@ -324,6 +326,22 @@ describe('§14.9 S 组：退化路径', () => {
     ]);
     expect(buildGraph(es).turns[0].steps[0].hasError).toBe(false);
     expect(buildGraph(withBad).turns[0].steps[0].hasError).toBe(true);
+  });
+
+  /**
+   * StepNode.tools 存的是**裸工具名**（`exec_command`），排版由渲染层加。
+   * 名字从标题的参数里读（`entry.toolCall` 的 `tool`）；缺名时标题是
+   * `entry.toolCallUnnamed`，没有参数，退回读 payload.name——
+   * 无论走哪条路，都不许把 `→` 这种排版字符带进数据里。
+   */
+  it('S24 工具名是裸名，从标题参数读；缺名走 payload 兜底也不残留箭头', () => {
+    const unnamed = { type: 'response_item', payload: { type: 'function_call', arguments: '{}' } };
+    const es = synth([started('t1'), toolCall('shell'), unnamed, usage(1, 2)]);
+    const tools = buildGraph(es).turns[0].steps[0].tools;
+    expect(tools).toHaveLength(2);
+    expect(tools[0]).toBe('shell');
+    expect(tools.every((t) => typeof t === 'string')).toBe(true);
+    expect(tools.join('')).not.toContain('→');
   });
 
   /**

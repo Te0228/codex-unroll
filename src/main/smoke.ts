@@ -59,11 +59,25 @@ export async function runSmoke(
    * （实测出现过「断言查到树节点、截图里却还是折叠态」）。
    * 先等两帧再截。断言读的是 DOM 状态、不受此影响，这里只为让截图可信。
    */
+  /**
+   * ★ 本轮跑哪个语言（§15）。
+   *
+   * 不钉住语言的话，冒烟会跟着**跑它的那台机器**的系统语言走——同一份代码
+   * 在作者机器上出中文截图、在 CI 上出英文截图，而两边都「通过」。
+   * 截图是要进 README 的产物，不能是这种薛定谔状态。
+   *
+   * 语言偏好存在渲染层的 localStorage 里（刻意不走 IPC，见 §15.4），
+   * 所以这里只能「写进去 → 重新加载」，没有更直接的路。
+   */
+  const locale = process.env.UNROLL_LOCALE === 'en' ? 'en' : 'zh-CN';
+  /** 截图带语言后缀：README.md 用英文那套，README.zh-CN.md 用中文那套 */
+  const shotName = (name: string) => (locale === 'en' ? `${name}.en` : name);
+
   const shot = async (name: string) => {
     await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
     await wait(150);
     const img = await win.webContents.capturePage();
-    await fs.writeFile(path.join(outDir, `${name}.png`), img.toPNG());
+    await fs.writeFile(path.join(outDir, `${shotName(name)}.png`), img.toPNG());
   };
 
   /**
@@ -82,6 +96,16 @@ export async function runSmoke(
     const done = () => resolve();
     win.webContents.once('did-finish-load', done);
     setTimeout(done, 20000);
+  });
+
+  // ── 第 0 步：钉住语言，再重新加载 ─────────────────────────────────
+  // 必须在任何断言之前做完，否则前半截跑的是系统语言、后半截是钉住的语言。
+  console.log(`[smoke] locale = ${locale}`);
+  await js(`try{localStorage.setItem('unroll:locale',${JSON.stringify(locale)})}catch{}`);
+  win.webContents.reload();
+  await new Promise<void>((resolve) => {
+    win.webContents.once('did-finish-load', () => resolve());
+    setTimeout(resolve, 20000);
   });
 
   // ── 第 1 步：左栏列出 4 个夹具会话 ────────────────────────────────
@@ -138,6 +162,21 @@ export async function runSmoke(
   check('§6.8 多轮图仍无横向溢出', true, await js(
     `(()=>{const g=document.querySelector('[data-testid="graph"]');
        return g.scrollWidth<=g.clientWidth+1})()`));
+
+  // ── §15 本地化：界面外壳必须整体切到本轮语言 ──────────────────────
+  // ★ 只查**界面外壳**，不查内容区。夹具 04 的会话内容本身就是中文（用户提问、
+  //   模型回答），英文模式下它当然还是中文——那是数据不是文案，翻译它才是错的。
+  //   所以断言落在六组标签、视图切换、左栏标题这些纯 chrome 上。
+  check('§15 六组标签按语言渲染',
+    locale === 'en'
+      ? ['Input', 'Thinking', 'Action', 'Output', 'Meta', 'Error']
+      : ['输入', '思考', '行动', '输出', '元信息', '异常'],
+    await js(`[...document.querySelectorAll('.fb-group')].map(e=>e.textContent.replace(/[\\d\\s]+$/,'').replace(/^[^\\p{L}]+/u,''))`));
+  check('§15 视图切换按语言渲染',
+    locale === 'en' ? ['Graph', 'List'] : ['图', '列表'],
+    await js(`[...document.querySelectorAll('.viewswitch button')].map(e=>e.textContent.trim())`));
+  check('§15 语言切换器存在且选中本轮语言', locale, await js(
+    `document.querySelector('[data-testid="locale-select"]')?.value`));
 
   // ── 第 3 步：打开 01 号夹具，核对 §14.2 的期望值 ──────────────────
   await js(`Array.from(document.querySelectorAll('.session-item')).find(e=>e.textContent.includes('hello.txt'))?.click()`);

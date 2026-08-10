@@ -37,6 +37,7 @@
  * 融进 Step 内的条目里。
  */
 import type { Entry, EntryKind } from './types';
+import { isMsgRef } from './i18n';
 
 // ─────────────────────────────────────────────────────────────
 // 判别式：集中在这里，别散落到组件里
@@ -81,7 +82,11 @@ export interface StepNode {
   inputTokens?: number;
   outputTokens?: number;
   outcome: StepOutcome;
-  /** 本 Step 调用的工具名，块头摘要用 */
+  /**
+   * 本 Step 调用的工具名，块头摘要用。
+   * ★ 存**裸工具名**（`exec_command`），不带 `→` 前缀——箭头是排版，
+   *   由渲染层加。此前这里直接拿 `entry.title`，等于把排版腌进了数据。
+   */
   tools: string[];
   hasError: boolean;
 }
@@ -130,6 +135,16 @@ function str(v: unknown): string {
 
 function num(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+/**
+ * 工具名。归一化层把它放进标题的参数里（`entry.toolCall` 的 `tool`），
+ * 名字缺失时走的是 `entry.toolCallUnnamed`，没有参数——那种情况直接读 payload 兜底。
+ */
+function toolNameOf(e: Entry): string {
+  const title = e.title;
+  if (isMsgRef(title) && typeof title.params?.tool === 'string') return title.params.tool;
+  return str(payloadOf(e).name);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -198,7 +213,7 @@ function closeStep(t: TurnDraft, usage?: Entry): void {
     }
   }
 
-  const tools = entries.filter((e) => e.kind === 'tool_call').map((e) => e.title);
+  const tools = entries.filter((e) => e.kind === 'tool_call').map(toolNameOf);
   const total = usage ? totalUsage(usage) : undefined;
 
   t.steps.push({

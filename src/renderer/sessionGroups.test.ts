@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ProjectRef, SessionListItem } from '../shared/types';
+import { ref, resolve } from '../shared/i18n';
 import { UNKNOWN_KEY, groupKeyOf, groupSessions, matchesSession } from './sessionGroups';
 
 const CODEX: ProjectRef = { key: 'git:github.com/openai/codex', label: 'openai/codex', kind: 'git' };
@@ -48,7 +49,11 @@ describe('groupSessions · 分组与排序', () => {
       s('/codex.jsonl', 100, CODEX),
       s('/demo.jsonl', 50, DEMO),
     ]);
-    expect(groups.map((g) => g.label)).toEqual(['openai/codex', 'x/demo', '未知项目']);
+    // ★ 组头文案分两条路（SPEC §15.1）：项目名是**数据**放 `label`，
+    //   「未知项目」是**文案**放 `labelKey`，渲染层才翻。所以这里 label 是空串。
+    expect(groups.map((g) => g.label)).toEqual(['openai/codex', 'x/demo', '']);
+    expect(groups.map((g) => g.labelKey)).toEqual([undefined, undefined, 'project.unknown']);
+    expect(resolve('zh-CN', ref('project.unknown'))).toBe('未知项目');
     const last = groups[groups.length - 1];
     expect(last.key).toBe(UNKNOWN_KEY);
     expect(last.unknown).toBe(true);

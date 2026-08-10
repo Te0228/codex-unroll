@@ -9,6 +9,7 @@ import type { Entry } from '../../shared/types';
 import type { SessionGraph } from '../../shared/steps';
 import { countSteps } from '../../shared/steps';
 import type { ViewMode } from '../hooks/useViewMode';
+import { useT } from '../i18n';
 import { Timeline } from './Timeline';
 import { StepGraph } from './StepGraph';
 
@@ -35,14 +36,23 @@ export function MainPane({
   selectedIndex,
   onSelect,
 }: MainPaneProps) {
+  const { t } = useT();
+
   return (
     <main className="main" data-testid="main">
       <div className="viewbar">
-        <div className="viewswitch" role="group" aria-label="主区视图">
-          <ViewBtn id="graph" view={view} onPick={onViewChange} label="图" />
-          <ViewBtn id="list" view={view} onPick={onViewChange} label="列表" />
+        <div className="viewswitch" role="group" aria-label={t('ui.mainView')}>
+          <ViewBtn id="graph" view={view} onPick={onViewChange} label={t('ui.viewGraph')} />
+          <ViewBtn id="list" view={view} onPick={onViewChange} label={t('ui.viewList')} />
         </div>
         <span className="spacer" />
+        {/*
+         * ★ 这句**故意不进目录**：`turn` / `step` 是 SPEC §6.8 的结构术语
+         *   （对应 Codex 源码里的 Task/Turn 与 run_turn 内的一步），
+         *   跟界面文案不是一回事，中英两版都念这个词。
+         *   套上 `ui.stepCount` 反而会在英文下变成 "2 steps"——
+         *   复数化对术语是干扰，不是本地化。
+         */}
         <span className="viewbar-shape" data-testid="viewbar-shape">
           {graph.turns.length} turn · {countSteps(graph)} step
         </span>

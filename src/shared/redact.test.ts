@@ -8,9 +8,23 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { LOCALES, resolve } from './i18n';
 import { MASK, isRedacted, redactDeep, redactText } from './redact';
 import { toEntries } from './rollout';
 import type { Entry, RolloutRecord } from './types';
+
+/**
+ * title / preview 现在是 `Text`：固定文案是 `MsgRef`，工具名、模型原话之类的
+ * 数据在 `params` 里。脱敏要管的正是**渲染出来的那一串**，所以断言前先在
+ * **每一种语言**下摊平——只看结构会漏掉「参数里带了密钥」这种情况。
+ */
+function titleTexts(e: Entry): string {
+  return LOCALES.map((l) => resolve(l, e.title)).join('\n');
+}
+
+function previewTexts(e: Entry): string {
+  return LOCALES.map((l) => resolve(l, e.preview)).join('\n');
+}
 
 function readFixtureLines(name: string): string[] {
   const path = fileURLToPath(new URL(`../../test/fixtures/${name}`, import.meta.url));
@@ -89,7 +103,7 @@ describe('B. 密钥脱敏 —— 03-edge-cases.jsonl', () => {
   });
 
   it('B8 · preview / title 同样被脱敏', () => {
-    const allText = EDGE.map((e) => `${e.title}\n${e.preview}`).join('\n');
+    const allText = EDGE.map((e) => `${titleTexts(e)}\n${previewTexts(e)}`).join('\n');
     expect(allText.indexOf('FAKEkeyDoNotUse')).toBe(-1);
     for (const frag of FAKE_FRAGMENTS) {
       expect(allText).not.toContain(frag);
@@ -104,7 +118,10 @@ describe('B. 密钥脱敏 —— 03-edge-cases.jsonl', () => {
 
   it('B10 · 脱敏后仍可搜索尾 4 位，搜 ab12 命中 B1 那条', () => {
     const hits = EDGE.filter(
-      (e) => e.rawPretty.includes('ab12') || e.preview.includes('ab12') || e.title.includes('ab12'),
+      (e) =>
+        e.rawPretty.includes('ab12') ||
+        previewTexts(e).includes('ab12') ||
+        titleTexts(e).includes('ab12'),
     );
     expect(hits).toHaveLength(1);
     expect(hits[0]).toBe(sessionMeta);

@@ -8,6 +8,7 @@
  * 这里只放语义与符号，避免颜色在两处各写一份。
  */
 import type { DisplayGroup, EntryKind } from './types';
+import type { MsgKey } from './i18n';
 
 export function kindToGroup(kind: EntryKind): DisplayGroup {
   switch (kind) {
@@ -35,8 +36,11 @@ export function kindToGroup(kind: EntryKind): DisplayGroup {
 
 export interface GroupMeta {
   id: DisplayGroup;
-  /** 底部状态栏显示的名字 */
-  label: string;
+  /**
+   * 底部状态栏显示的名字，**是翻译 key 不是人话**。
+   * 这个模块被 main 与 renderer 共用，而语言是渲染时才知道的（见 shared/i18n.ts）。
+   */
+  labelKey: MsgKey;
   /** 不依赖颜色的标记符号（§6.2） */
   symbol: string;
   /** CSS 变量名，供 style 用 */
@@ -45,12 +49,12 @@ export interface GroupMeta {
 
 /** 顺序即底部状态栏的显示顺序（验收 F14） */
 export const GROUPS: GroupMeta[] = [
-  { id: 'input', label: '输入', symbol: '●', cssVar: '--g-input' },
-  { id: 'think', label: '思考', symbol: '○', cssVar: '--g-think' },
-  { id: 'act', label: '行动', symbol: '▶', cssVar: '--g-act' },
-  { id: 'output', label: '输出', symbol: '●', cssVar: '--g-output' },
-  { id: 'meta', label: '元信息', symbol: '·', cssVar: '--g-meta' },
-  { id: 'error', label: '异常', symbol: '⚠', cssVar: '--g-error' },
+  { id: 'input', labelKey: 'group.input', symbol: '●', cssVar: '--g-input' },
+  { id: 'think', labelKey: 'group.think', symbol: '○', cssVar: '--g-think' },
+  { id: 'act', labelKey: 'group.act', symbol: '▶', cssVar: '--g-act' },
+  { id: 'output', labelKey: 'group.output', symbol: '●', cssVar: '--g-output' },
+  { id: 'meta', labelKey: 'group.meta', symbol: '·', cssVar: '--g-meta' },
+  { id: 'error', labelKey: 'group.error', symbol: '⚠', cssVar: '--g-error' },
 ];
 
 export const GROUP_BY_ID: Record<DisplayGroup, GroupMeta> = Object.fromEntries(

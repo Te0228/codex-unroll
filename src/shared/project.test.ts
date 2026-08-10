@@ -1,5 +1,14 @@
+/**
+ * 项目身份（SPEC §12 Q3）。
+ *
+ * ★ 本地化之后的口径：`label` 里放的是**数据**（`owner/repo` 或目录末两段），
+ *   任何语言下都原样显示；唯一需要翻译的是「未知项目」，它走 `labelKey`。
+ *   所以 git / dir 两条路径上 `labelKey` 必须**不存在**——一旦冒出来，
+ *   组头就会把真实项目名换成一句翻译。
+ */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { resolve } from './i18n';
 import { projectRef, UNKNOWN_PROJECT } from './project';
 
 describe('projectRef · git 优先', () => {
@@ -81,6 +90,29 @@ describe('projectRef · 退回 cwd', () => {
   it('两者都缺 → UNKNOWN_PROJECT，不抛异常', () => {
     expect(projectRef()).toEqual(UNKNOWN_PROJECT);
     expect(projectRef('', '')).toEqual(UNKNOWN_PROJECT);
+  });
+});
+
+describe('projectRef · 展示名的两条路：数据走 label，文案走 labelKey', () => {
+  it('UNKNOWN_PROJECT 的展示名是翻译 key，不是烤死的中文', () => {
+    expect(UNKNOWN_PROJECT).toEqual({
+      key: '',
+      label: '',
+      labelKey: 'project.unknown',
+      kind: 'unknown',
+    });
+    // 原来烤在这里的那句中文，现在由目录给出
+    expect(resolve('zh-CN', { key: UNKNOWN_PROJECT.labelKey! })).toBe('未知项目');
+    expect(resolve('en', { key: UNKNOWN_PROJECT.labelKey! })).toBe('Unknown project');
+  });
+
+  it('git / dir 两条路径都**没有** labelKey——项目名是数据，不该被翻译', () => {
+    const git = projectRef('/Users/dev/workspace/codex/codex-rs', 'https://github.com/openai/codex.git');
+    const dir = projectRef('/Users/dev/workspace/myproj');
+    expect(git.labelKey).toBeUndefined();
+    expect(dir.labelKey).toBeUndefined();
+    expect(git.label).toBe('openai/codex');
+    expect(dir.label).toBe('workspace/myproj');
   });
 });
 

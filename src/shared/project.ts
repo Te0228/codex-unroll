@@ -7,17 +7,33 @@
  *   根目录各起过会话的话，按 cwd 分组会把**一个项目劈成三组**。
  *   所以分组键优先用 `session_meta.payload.git.repository_url`，没有 git 才退回 cwd。
  */
+import type { MsgKey } from './i18n';
 
 export interface ProjectRef {
   /** 分组键，用于聚合与排序。同一项目必须稳定相等 */
   key: string;
-  /** 展示名，左栏组头显示。尽量短——左栏只有 240px */
+  /**
+   * 展示名，左栏组头显示。尽量短——左栏只有 240px。
+   * ★ 这里放的是**数据**（`owner/repo` 或目录末两段），任何语言下都原样显示。
+   *   唯一需要翻译的是「未知项目」，它走 `labelKey`，见下。
+   */
   label: string;
+  /**
+   * 有值时用它翻译出组头文案，`label` 作废。只有「认不出是哪个项目」这一种情况用到。
+   * 分成两个字段而不是把 `label` 变成 `Text`，是为了不让翻译类型渗进
+   * 分组与排序那条链路——那条链路只关心字符串。
+   */
+  labelKey?: MsgKey;
   /** 是 git 仓库还是裸目录，UI 可据此换图标 */
   kind: 'git' | 'dir' | 'unknown';
 }
 
-export const UNKNOWN_PROJECT: ProjectRef = { key: '', label: '未知项目', kind: 'unknown' };
+export const UNKNOWN_PROJECT: ProjectRef = {
+  key: '',
+  label: '',
+  labelKey: 'project.unknown',
+  kind: 'unknown',
+};
 
 /**
  * 归一化 git 远端 URL 到 `host/owner/repo`。

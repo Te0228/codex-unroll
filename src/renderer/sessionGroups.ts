@@ -12,6 +12,7 @@
  *   这些项会带着很新的 mtime 霸占第一组——那恰好毁掉上面那条性质。
  */
 import type { SessionListItem } from '../shared/types';
+import type { MsgKey } from '../shared/i18n';
 import { UNKNOWN_PROJECT } from '../shared/project';
 
 /** 未知项目组的键。用非空值，避免空字符串当 React key / localStorage 成员时的歧义；
@@ -20,7 +21,13 @@ export const UNKNOWN_KEY = 'unknown:';
 
 export interface SessionGroup {
   key: string;
+  /**
+   * 组头文案。**放的是数据**（`owner/repo` 或目录末两段），任何语言下原样显示。
+   * 未知项目组这里是空串，文案走 `labelKey`——见 SPEC §15.1。
+   */
   label: string;
+  /** 有值时用它翻译出组头，`label` 作废。目前只有「未知项目」这一种情况。 */
+  labelKey?: MsgKey;
   kind: 'git' | 'dir' | 'unknown';
   /** 组内按 mtime 倒序 */
   items: SessionListItem[];
@@ -62,9 +69,13 @@ export function groupSessions(items: SessionListItem[]): SessionGroup[] {
     const key = groupKeyOf(it);
     let g = byKey.get(key);
     if (!g) {
+      // ★ 未知组的文案不在这里定：`UNKNOWN_PROJECT.label` 现在是空串，
+      //   「未知项目」四个字是 `labelKey` 指向的目录项，渲染层才翻。
+      //   此前这行拿 `UNKNOWN_PROJECT.label` 兜底，本地化之后会兜出一个空白组头。
       g = {
         key,
-        label: (unknown ? UNKNOWN_PROJECT.label : p.label) || UNKNOWN_PROJECT.label,
+        label: unknown ? '' : p.label,
+        ...(unknown || !p.label ? { labelKey: UNKNOWN_PROJECT.labelKey } : {}),
         kind: unknown ? 'unknown' : p.kind,
         items: [],
         latest: Number.NEGATIVE_INFINITY,

@@ -59,6 +59,12 @@ mid-conversation shows it — `read-only / never` on Turn 1, `workspace-write / 
 - **Project grouping** — sessions grouped by git repository, groups ordered by most recent activity.
 - **Secret redaction** — API keys, bearer tokens, JWTs, AWS and GitHub tokens masked by default, last 4 characters kept.
 - **Light / dark** — follows the system theme.
+- **English / 中文** — follows the system language by default, switchable from the top bar.
+
+> The UI language only affects the *UI*. Session content, tool names and command output are
+> data — they render as-is in any language, and translating them would be wrong. By the same
+> rule, full-text search matches the wording **you are looking at**: search `Model` in English,
+> `模型` in Chinese. Otherwise "search what you see" stops being true.
 
 ![detail panel](./docs/screenshot-detail.png)
 
@@ -137,7 +143,7 @@ Requires Node 20+. macOS first; Windows and Linux should work but are untested.
 npm install
 npm start                          # dev mode
 CODEX_HOME=$(pwd)/test npm start   # run against the test fixtures
-npm test                           # 423 unit tests
+npm test                           # 460 unit tests
 npm run test:cov                   # coverage (90% threshold on src/shared/)
 npm run typecheck
 npm run lint                       # oxlint
@@ -145,7 +151,14 @@ npm run make                       # package a zip
 
 # End-to-end smoke: runs 5 steps, prints PASS/FAIL per assertion, leaves 5 screenshots
 CODEX_HOME=$(pwd)/test UNROLL_SHOT=/tmp/shots npm start
+
+# The smoke pins the UI language (zh-CN by default). Both README screenshot sets come from it:
+UNROLL_LOCALE=en CODEX_HOME=$(pwd)/test UNROLL_SHOT=/tmp/shots npm start
 ```
+
+> Pinning the language in the smoke run is not optional. Without it the run follows the system
+> language of whatever machine executes it — Chinese screenshots on the author's laptop, English
+> ones in CI, and both "pass".
 
 The linter is **oxlint**, not ESLint: `typescript@7` is the native tsgo build and does not expose
 the classic compiler API (`TypeFlags` / `createProgram` are all `undefined`), so
@@ -166,9 +179,9 @@ Electron Forge · Vite · React 19 · TypeScript · Vitest · oxlint
 
 ## Status
 
-**v0.1 feature-complete; v0.2 adds the graph view.** 423 unit tests, 100% line coverage on the
-normalization layer, end-to-end smoke suite passing 38/38 against both the dev build and the
-packaged app.
+**v0.1 feature-complete; v0.2 adds the graph view; v0.3 adds English/Chinese localization.**
+460 unit tests, 100% line coverage on the normalization layer, end-to-end smoke suite passing
+41/41 in each of the two languages.
 
 ## Distribution
 

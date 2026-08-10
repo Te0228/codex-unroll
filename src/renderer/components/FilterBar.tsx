@@ -9,6 +9,7 @@
 import type { RefObject } from 'react';
 import type { DisplayGroup } from '../../shared/types';
 import { GROUPS } from '../../shared/groups';
+import { useT } from '../i18n';
 
 export interface FilterBarProps {
   sessionCount: number;
@@ -39,18 +40,21 @@ export function FilterBar({
   canFollow,
   onToggleFollow,
 }: FilterBarProps) {
+  const { t } = useT();
   const filtered = visible !== total;
   return (
     <footer className="filterbar" data-testid="filterbar">
-      <span className="fb-sessions">{sessionCount} 个会话</span>
+      <span className="fb-sessions">{t('ui.sessionCount', { n: sessionCount })}</span>
 
       <span className="fb-total" data-testid="entry-count">
-        {filtered ? `${visible} / ${total} 条` : `${total} 条`}
+        {filtered ? t('ui.recordCountFiltered', { visible, total }) : t('ui.recordCount', { n: total })}
       </span>
 
-      <span className="fb-groups" role="group" aria-label="类型过滤">
+      <span className="fb-groups" role="group" aria-label={t('ui.typeFilter')}>
         {GROUPS.map((g) => {
           const on = active.has(g.id);
+          // 组名本身也要翻译，所以先取出来，再当参数塞进「（点击隐藏/显示）」那条
+          const label = t(g.labelKey);
           return (
             <button
               key={g.id}
@@ -58,13 +62,13 @@ export function FilterBar({
               data-testid={`group-${g.id}`}
               data-count={counts[g.id] ?? 0}
               aria-pressed={on}
-              title={`${g.label}（点击${on ? '隐藏' : '显示'}）`}
+              title={t(on ? 'ui.groupHide' : 'ui.groupShow', { label })}
               onClick={() => onToggleGroup(g.id)}
             >
               <span className={`g-${g.id}`} aria-hidden="true">
                 {g.symbol}
               </span>
-              <span>{g.label}</span>
+              <span>{label}</span>
               <span>{counts[g.id] ?? 0}</span>
             </button>
           );
@@ -76,8 +80,8 @@ export function FilterBar({
         <input
           ref={searchRef}
           data-testid="search"
-          aria-label="全文搜索"
-          placeholder="搜索  /"
+          aria-label={t('ui.fullTextSearch')}
+          placeholder={t('ui.searchPlaceholder')}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
         />
@@ -88,11 +92,11 @@ export function FilterBar({
         data-testid="follow-toggle"
         aria-pressed={following}
         disabled={!canFollow}
-        title={canFollow ? '实时跟随文件末尾' : '拖放打开的文件没有磁盘路径，无法跟随'}
+        title={canFollow ? t('ui.followTitle') : t('ui.followUnavailable')}
         onClick={onToggleFollow}
       >
         <span aria-hidden="true">{following ? '☑' : '☐'}</span>
-        <span>跟随</span>
+        <span>{t('ui.follow')}</span>
         {following && <span aria-hidden="true">●</span>}
       </button>
     </footer>

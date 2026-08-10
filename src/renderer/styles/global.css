@@ -221,6 +221,27 @@ input {
   color: var(--fg-muted);
 }
 
+/*
+ * 语言切换（§15）。原生 <select> 默认自带系统外观（白底黑字 + 边框），
+ * 在深色状态条上会像一块补丁，所以这里把外观全剥掉、只留文字——
+ * 展开后的选项列表仍由系统绘制，那部分动不了也不该动（键盘/无障碍靠它）。
+ */
+.sb-locale {
+  flex: none;
+  appearance: none;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  font: inherit;
+}
+
+.sb-locale:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
 /* ── 左栏：会话列表（240px）──────────────────────────────────────── */
 
 .sessions {
@@ -451,8 +472,24 @@ input {
   text-align: center;
 }
 
+/**
+ * 分类名这一列是**固定宽**的，它是「所有行的标题从同一个 x 起排」的前提。
+ *
+ * 5ch 这个数字来自中文：12 个分类名被刻意设计成一律两个汉字（≈4ch）。
+ * 英文没有这个性质——`Session` 就是 7 个字符，塞进 5ch 会把标题列挤歪。
+ * 所以列宽跟着语言走，`data-locale` 由 LocaleProvider 打在根元素上。
+ */
+:root {
+  --kind-col: 5ch;
+}
+
+:root[data-locale='en'] {
+  --kind-col: 8ch;
+}
+
 .row-kind {
-  flex: 0 0 5ch;
+  flex: 0 0 var(--kind-col);
+  overflow: hidden;
 }
 
 .row-title {

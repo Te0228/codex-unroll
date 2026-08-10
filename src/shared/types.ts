@@ -5,6 +5,7 @@
  *    改这里等于改契约，改之前先确认另外两侧。
  */
 import type { ProjectRef } from './project';
+import type { Text } from './i18n';
 
 export type { ProjectRef };
 
@@ -59,10 +60,19 @@ export interface Entry {
   /** user_message / function_call / …；顶层记录无二级判别式时为 '' */
   payloadType: string;
   kind: EntryKind;
-  /** 单行标题，如 '→ apply_patch'（验收 C12 / D5） */
-  title: string;
-  /** 正文。时间线截断显示，详情面板全量显示。已脱敏。 */
-  preview: string;
+  /**
+   * 单行标题。**是 `Text` 不是 `string`**——固定文案在这里只是一个 `MsgRef`，
+   * 到渲染层才变成人话（`resolve(locale, title)`）。工具调用是
+   * `{ key: 'entry.toolCall', params: { tool: 'apply_patch' } }`（验收 C12 / D5）。
+   * 未知类型的标题则是**原始类型名这个字符串**，因为它是数据不是文案。
+   */
+  title: Text;
+  /**
+   * 正文。时间线截断显示，详情面板全量显示。已脱敏。
+   * 绝大多数是纯数据字符串；只有 `task_complete` 与 `token_count` 两处含固定
+   * 文案（「首字 Nms」「输入 N」），它们是 `MsgRef`。
+   */
+  preview: Text;
   callId?: string;
   turnId?: string;
   /** 已脱敏的原始记录 */

@@ -22,6 +22,9 @@ import { useSelection } from './hooks/useSelection';
 import { useFollow } from './hooks/useFollow';
 import { useResizable } from './hooks/useResizable';
 import { useViewMode } from './hooks/useViewMode';
+import { useLocalePref } from './hooks/useLocalePref';
+import { LocaleProvider, useT } from './i18n';
+import type { LocalePref } from '../shared/i18n';
 import { basename, matchesQuery } from './format';
 
 interface Doc {
@@ -51,7 +54,29 @@ function buildDoc(path: string, lines: string[], size: number, live: boolean): D
   return { path, name: basename(path), size, live, entries, summary: summarize(entries) };
 }
 
+/**
+ * 外壳只干两件事：保管语言偏好、把 Provider 架在整棵树上面。
+ *
+ * ★ 为什么要多这一层组件：`useT()` 必须在 `LocaleProvider` **内部**才能读到
+ *   Context，而 Provider 是 App 自己渲染的——同一个组件里既渲染 Provider
+ *   又想消费它，拿到的永远是空 Context。所以真正的界面下沉到 AppShell。
+ */
 export function App() {
+  const localePref = useLocalePref();
+  return (
+    <LocaleProvider pref={localePref.pref}>
+      <AppShell localePref={localePref.pref} onLocalePrefChange={localePref.setPref} />
+    </LocaleProvider>
+  );
+}
+
+interface AppShellProps {
+  localePref: LocalePref;
+  onLocalePrefChange: (p: LocalePref) => void;
+}
+
+function AppShell({ localePref, onLocalePrefChange }: AppShellProps) {
+  const { locale } = useT();
   const sessions = useSessions();
   const [doc, setDoc] = useState<Doc | null>(null);
   const [sessionFilter, setSessionFilter] = useState('');
@@ -78,9 +103,14 @@ export function App() {
     return c;
   }, [entries]);
 
+  /**
+   * ★ 搜索必须搜**当前语言下看到的字**（F7）：`title` / `preview` 是 `Text`，
+   *   matchesQuery 自己会按 locale 翻成人话再比对（理由见 format.ts 的说明）。
+   *   所以切语言会改变搜索结果，这是对的——搜索结果与眼睛看到的必须是同一份文本。
+   */
   const visible = useMemo(
-    () => entries.filter((e) => active.has(kindToGroup(e.kind)) && matchesQuery(e, query)),
-    [entries, active, query],
+    () => entries.filter((e) => active.has(kindToGroup(e.kind)) && matchesQuery(locale, e, query)),
+    [entries, active, query, locale],
   );
 
   /**
@@ -283,6 +313,8 @@ export function App() {
       <StatusBar
         fileName={doc?.name ?? ''}
         summary={doc?.summary ?? null}
+        localePref={localePref}
+        onLocalePrefChange={onLocalePrefChange}
         onReveal={
           doc?.live
             ? () => {

@@ -13,6 +13,7 @@ import type { SessionListItem } from '../../shared/types';
 import { basename, formatBytes, formatStamp } from '../format';
 import { groupKeyOf, groupSessions, matchesSession } from '../sessionGroups';
 import { useCollapsedGroups } from '../hooks/useCollapsedGroups';
+import { useT } from '../i18n';
 
 export interface SessionListProps {
   items: SessionListItem[];
@@ -33,6 +34,7 @@ export function SessionList({
   onOpenDialog,
   onReload,
 }: SessionListProps) {
+  const { t } = useT();
   const { isCollapsed, toggle, expand } = useCollapsedGroups();
 
   // 先过滤再分组：过滤后为空的组自然不存在，也就不会渲染出空组头
@@ -79,31 +81,44 @@ export function SessionList({
   );
 
   return (
-    <nav className="sessions" data-testid="session-list" aria-label="会话列表">
+    <nav className="sessions" data-testid="session-list" aria-label={t('ui.sessionListLabel')}>
       <div className="sessions-head">
-        <h2>会话</h2>
+        <h2>{t('ui.sessions')}</h2>
         <span className="spacer" />
-        <button className="icon-btn" onClick={onOpenDialog} title="打开文件 ⌘O" aria-label="打开文件">
+        <button
+          className="icon-btn"
+          onClick={onOpenDialog}
+          title={t('ui.openFileTitle')}
+          aria-label={t('ui.openFile')}
+        >
           📂
         </button>
-        <button className="icon-btn" onClick={onReload} title="刷新 r" aria-label="刷新">
+        <button
+          className="icon-btn"
+          onClick={onReload}
+          title={t('ui.reloadTitle')}
+          aria-label={t('ui.reload')}
+        >
           ↻
         </button>
       </div>
 
       <input
         className="sessions-filter"
-        placeholder="过滤…"
-        aria-label="过滤会话"
+        placeholder={t('ui.filterPlaceholder')}
+        aria-label={t('ui.filterSessions')}
         value={filter}
         onChange={(e) => onFilterChange(e.target.value)}
       />
 
       <div className="sessions-list">
-        {total === 0 && <p className="sessions-empty">没有会话</p>}
+        {total === 0 && <p className="sessions-empty">{t('ui.noSessions')}</p>}
 
         {groups.map((g) => {
           const off = isCollapsed(g.key);
+          // 组名是**数据**（owner/repo 或目录末两段），原样显示；
+          // 唯一要翻译的是「认不出是哪个项目」这一种，对应 ProjectRef.labelKey
+          const label = g.unknown ? t('project.unknown') : g.label;
           // 用户可以在打开会话之后再手动折叠该组——那时自动展开不生效，
           // 只能靠这个点告诉他「你正看的那条在里面」
           const hidesActive = off && g.items.some((it) => it.path === activePath);
@@ -116,7 +131,7 @@ export function SessionList({
                 data-key={g.key}
                 aria-expanded={!off}
                 // 组名会被省略号截掉，悬停给出完整身份（git:host/owner/repo 或 dir:绝对路径）
-                title={g.unknown ? g.label : g.key}
+                title={g.unknown ? label : g.key}
                 onClick={() => toggle(g.key)}
               >
                 <span className="session-group-caret" aria-hidden="true">
@@ -126,13 +141,13 @@ export function SessionList({
                   <span
                     className="session-group-dot g-input"
                     data-testid="session-group-dot"
-                    title="当前打开的会话在这个组里"
-                    aria-label="当前打开的会话在这个组里"
+                    title={t('ui.currentSessionInGroup')}
+                    aria-label={t('ui.currentSessionInGroup')}
                   >
                     ●
                   </span>
                 )}
-                <span className="session-group-label">{g.label}</span>
+                <span className="session-group-label">{label}</span>
                 <span className="session-group-count">{g.items.length}</span>
               </button>
               {!off && <div className="session-group-items">{g.items.map(renderItem)}</div>}

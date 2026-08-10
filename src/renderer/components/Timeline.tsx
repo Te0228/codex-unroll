@@ -8,6 +8,7 @@
 import type { Entry } from '../../shared/types';
 import { TimelineRow } from './TimelineRow';
 import { useAutoScroll } from '../hooks/useAutoScroll';
+import { useT } from '../i18n';
 
 export interface TimelineProps {
   entries: Entry[];
@@ -18,11 +19,12 @@ export interface TimelineProps {
 }
 
 export function Timeline({ entries, selectedIndex, onSelect, emptyHint }: TimelineProps) {
+  const { t } = useT();
   const { scrollRef, onScroll } = useAutoScroll(entries.length, selectedIndex);
 
   return (
     <div className="timeline" data-testid="timeline" ref={scrollRef} onScroll={onScroll}>
-      <div className="timeline-inner" role="listbox" aria-label="时间线">
+      <div className="timeline-inner" role="listbox" aria-label={t('ui.timeline')}>
         {entries.map((entry) => (
           <TimelineRow
             key={entry.index}
@@ -31,7 +33,9 @@ export function Timeline({ entries, selectedIndex, onSelect, emptyHint }: Timeli
             onSelect={onSelect}
           />
         ))}
-        {entries.length === 0 && <p className="sessions-empty">{emptyHint ?? '没有匹配的条目'}</p>}
+        {entries.length === 0 && (
+          <p className="sessions-empty">{emptyHint ?? t('ui.noMatchingEntries')}</p>
+        )}
       </div>
     </div>
   );

@@ -5,6 +5,8 @@
  * 并显式显示扫描目录路径，让「为什么左栏是空的」可自查。
  * （窗口任意位置的 drop 由 App 兜底处理。）
  */
+import { useT } from '../i18n';
+
 export interface DropZoneProps {
   sessionsDir: string;
   dragOver: boolean;
@@ -12,22 +14,23 @@ export interface DropZoneProps {
 }
 
 export function DropZone({ sessionsDir, dragOver, onOpenDialog }: DropZoneProps) {
+  const { t } = useT();
   return (
     <div className={`dropzone${dragOver ? ' over' : ''}`} data-testid="dropzone">
       <div className="dropzone-box">
         <span className="dropzone-icon" aria-hidden="true">
           📜
         </span>
-        <span className="dropzone-title">把 rollout .jsonl 拖到这里</span>
+        <span className="dropzone-title">{t('ui.dropTitle')}</span>
         <span>
-          或从左侧选择，或按{' '}
+          {t('ui.orPickLeft')}{' '}
           <button className="link-btn" onClick={onOpenDialog}>
-            ⌘O 打开
+            {t('ui.openShortcut')}
           </button>
         </span>
       </div>
       <span className="dropzone-dir mono" data-testid="scan-dir">
-        扫描目录：{sessionsDir || '~/.codex/sessions'}
+        {t('ui.scanDir', { dir: sessionsDir || '~/.codex/sessions' })}
       </span>
     </div>
   );
