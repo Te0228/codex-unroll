@@ -1,7 +1,7 @@
 {
   "name": "codex-unroll",
   "productName": "codex-unroll",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Desktop viewer for OpenAI Codex CLI session rollout logs (.jsonl) — read agent traces as a searchable timeline, follow live, with API keys redacted.",
   "main": ".vite/build/main.js",
   "private": true,
