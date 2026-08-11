@@ -1,0 +1,163 @@
+/**
+ * 详情面板的 v0.2 增量样式（F14 互跳 / F18 复制 / F20 分段）。
+ *
+ * 独立成一个文件，是为了让并行开发时**文件所有权互不相交**：
+ * global.css 由主线维护，图与详情面板各自一份，改动不会互相踩。
+ * 变量（--fg / --border / --row-h 等）仍然来自 global.css 的 :root。
+ *
+ * ⚠️ CSP 是 `style-src 'self'`：这里的一切必须写成 class，
+ *    JSX 里**不许出现 `style={{…}}`**（有回归测试扫描）。
+ *    确需动态数值时走 CSSOM：`el.style.setProperty('--x', v)`——
+ *    脚本写入不受 style-src 限制，行内 style 属性才受。
+ */
+
+/* ── F14 · 工具调用互跳 ─────────────────────────────────────────── */
+
+.detail-pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+/* 配不上对家时是一句说明，不是按钮——刻意长得不像可点的东西 */
+.detail-pair-none {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+/* ── F18 · 复制 ────────────────────────────────────────────────── */
+
+.detail-copy {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.copy-btn {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.copy-btn:hover {
+  background: var(--sel);
+  color: var(--fg);
+}
+
+.copy-state {
+  font-size: 11px;
+  color: var(--g-act);
+}
+
+/* 失败必须看得出来是失败（§9.1 的复制说明旁边，静默失败最坏） */
+.copy-state.bad {
+  color: var(--g-error);
+}
+
+/* §9.1：常显的「复制出去的是脱敏后的文本」。整行挤不下就自己换行 */
+.copy-note {
+  flex: 1 1 100%;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+/**
+ * execCommand 兜底路径用的隐藏 textarea。
+ *
+ * ⚠️ 不能用 `display: none` / `visibility: hidden`——那样的元素**选不中**，
+ *    execCommand('copy') 会复制到空。必须真的在渲染树里，只是挪出视口。
+ *    也不能靠行内 style（CSP），所以有了这个 class。
+ */
+.copy-sink {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── F20 · 大内容按 markdown 标题分段 ───────────────────────────── */
+
+.detail-viewswitch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.detail-section-count {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.body-sections {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.body-section + .body-section {
+  border-top: 1px solid var(--border);
+}
+
+.body-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 8px;
+  font-size: 12px;
+  text-align: left;
+  background: var(--bg-sunken);
+}
+
+.body-section-head:hover {
+  background: var(--sel);
+}
+
+/* 标题层级靠缩进表达，不靠字号——字号一变，段头就不等高了 */
+.body-section-head.lv3 {
+  padding-left: 20px;
+}
+
+.body-section-head.lv4,
+.body-section-head.lv5,
+.body-section-head.lv6 {
+  padding-left: 32px;
+}
+
+.body-section-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body-section-hits {
+  flex: none;
+  font-size: 11px;
+  color: var(--g-act);
+}
+
+.body-section-len {
+  flex: none;
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 段内正文复用 .detail-content 的尺寸约束（限高 + 内部滚动），只去掉外框 */
+.body-section .detail-content {
+  border: none;
+  border-radius: 0;
+  background: var(--bg);
+}

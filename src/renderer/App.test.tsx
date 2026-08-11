@@ -505,6 +505,60 @@ describe('过滤 / 搜索 / 导航（§6.3 / §6.5）', () => {
     fireEvent.click(rowAt(11));
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   });
+
+  /**
+   * ★ F14 互跳的接线回归（§6.9.1）。
+   *
+   * 这一条不是「功能能用吗」，而是**一个具体的坑**：
+   * `useSelection.selected` 是从 `visible` 里 find 出来的，而面板的显示条件是
+   * `selected != null`。所以「跳到一个当前被搜索过滤掉的对家」如果直接
+   * `selection.select(index)`，结果是 selectedIndex 设上了、selected 却是 null
+   * → **面板当场关掉**，用户看到「点了跳转，面板没了」。
+   *
+   * 触发路径很短：夹具 01 搜 `rejected` 命中索引 12（工具结果），
+   * 而它的调用方索引 11 不含这个词。
+   */
+  describe('F14b · 跳到被过滤掉的对家时，面板必须还在', () => {
+    it('搜索把调用方过滤掉了，点「跳到调用」仍能打开它', async () => {
+      await open();
+      // 先搜 rejected：命中索引 12，索引 11 被滤掉
+      fireEvent.change(screen.getByTestId('search'), { target: { value: 'rejected' } });
+      await waitFor(() => expect(rows().some((r) => r.dataset.index === '12')).toBe(true));
+      expect(rows().some((r) => r.dataset.index === '11')).toBe(false);
+
+      fireEvent.click(rowAt(12));
+      const jump = await screen.findByTestId('jump-counterpart');
+      fireEvent.click(jump);
+
+      // 面板还在，且展示的是索引 11 那条（不是空、不是原来那条）
+      const panel = await screen.findByTestId('detail-panel');
+      expect(panel).toBeTruthy();
+      await waitFor(() =>
+        expect(screen.getByTestId('detail-title').textContent).toContain('apply_patch'),
+      );
+      // 副作用是**可见的**：搜索框被清空，用户能理解为什么列表变了
+      expect((screen.getByTestId('search') as HTMLInputElement).value).toBe('');
+    });
+
+    /**
+     * jumpTo 里除了清搜索词，还会把目标所属的组重新打开。**这条路径今天从 UI 走不到**，
+     * 我试着写用例才发现：调用与结果同属「行动」组，关掉这一组会把两条一起藏起来，
+     * 于是面板自己先关了，根本点不到跳转按钮。
+     *
+     * 那段 `setActive` 因此是防御性的，不是死代码——它保的是
+     * 「选中之前先让目标可见」这个不变量。真正该钉住的是**它为什么走不到**：
+     * 一旦有人把 tool_out 挪到别的组，这条断言会红，提醒回来补用例。
+     */
+    it('（记录不变量）调用与结果同属一组，所以组过滤永远藏不掉「只有对家」', async () => {
+      await open();
+      const call = rowAt(11);
+      const out = rowAt(12);
+      expect(call.dataset.kind).toBe('tool_call');
+      expect(out.dataset.kind).toBe('tool_out');
+      expect(call.dataset.group).toBe('act');
+      expect(out.dataset.group).toBe('act');
+    });
+  });
 });
 
 describe('快捷键（§6.5）', () => {

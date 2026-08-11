@@ -11,6 +11,7 @@ import type { DisplayGroup, Entry, SessionSummary } from '../shared/types';
 import { GROUPS, kindToGroup } from '../shared/groups';
 import { summarize, toEntries } from '../shared/rollout';
 import { buildGraph } from '../shared/steps';
+import { buildPairs } from '../shared/pairing';
 import { StatusBar } from './components/StatusBar';
 import { SessionList } from './components/SessionList';
 import { MainPane } from './components/MainPane';
@@ -121,9 +122,45 @@ function AppShell({ localePref, onLocalePrefChange }: AppShellProps) {
   const graph = useMemo(() => buildGraph(entries), [entries]);
   const visibleIndices = useMemo(() => new Set(visible.map((e) => e.index)), [visible]);
 
+  /** F14 的配对表，同样从**全量** entries 建——理由同上 */
+  const pairs = useMemo(() => buildPairs(entries), [entries]);
+
   const selection = useSelection(visible);
   const panel = useResizable();
   const viewMode = useViewMode();
+
+  /**
+   * F14 互跳（§6.9.1）。**不能直接把 selection.select 递过去。**
+   *
+   * `useSelection` 的 `selected` 是从 `visible` 里 find 出来的，而面板的显示条件是
+   * `selection.selected != null`。于是「跳到一个当前被过滤掉的对家」会变成：
+   * selectedIndex 设上了 → 它不在 visible 里 → selected 是 null → **面板当场关掉**。
+   * 用户看到的是「点了跳转，面板没了」。
+   *
+   * 真实触发路径很短：在夹具 01 上搜 `rejected` 命中索引 12（结果），
+   * 但它的调用方索引 11 不含这个词 —— 点「跳到调用」就会关面板。
+   *
+   * 所以跳转前先把目标放出来：清掉搜索词、并确保它所属的那一组是开着的。
+   * 这是**可见的**副作用（搜索框空了），比静默关闭面板好解释得多。
+   */
+  const jumpTo = useCallback(
+    (index: number) => {
+      const target = entries.find((e) => e.index === index);
+      if (!target) return;
+      if (!visibleIndices.has(index)) {
+        setQuery('');
+        setActive((cur) => {
+          const g = kindToGroup(target.kind);
+          if (cur.has(g)) return cur; // 引用不变 → 不多一次渲染
+          const next = new Set(cur);
+          next.add(g);
+          return next;
+        });
+      }
+      selection.select(index);
+    },
+    [entries, visibleIndices, selection],
+  );
 
   // ── 打开 ────────────────────────────────────────────────────────────
   const openPath = useCallback(
@@ -364,6 +401,8 @@ function AppShell({ localePref, onLocalePrefChange }: AppShellProps) {
             onClose={selection.clear}
             onResizeStart={panel.onPointerDown}
             searchRef={detailSearchRef}
+            pairs={pairs}
+            onJump={jumpTo}
           />
         )}
       </div>

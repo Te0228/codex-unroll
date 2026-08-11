@@ -1,22 +1,35 @@
 /**
- * 右栏详情面板（§6.1 / F6–F13）。
+ * 右栏详情面板（§6.1 / F6–F13，v0.2 加了 F14 / F18 / F20）。
  *
  * 三条不要改回常规做法的约束：
  *   · 选中才渲染（App 里 entry 为 null 就整个不挂载，时间线占满宽度）——F6
- *   · 下钻**恰好两层**：这里是第二层，面板内除「原始 JSON」折叠外没有第三层展开——F13
+ *   · 下钻**恰好两层**：这里是第二层，面板内除「原始 JSON」折叠外没有第三层——F13
  *     （§10.2 要求的「展开全部」只是同一段正文的截断阈值开关，不是新的一层，
- *       且只在正文 >2000 字符时才出现）
+ *       且只在正文 >2000 字符时才出现；F20 的分段折叠同理，见 BodySections 文件头）
  *   · 独立滚动：.detail-body 自己 overflow:auto，body 永不滚——F12
  *
  * 会话头条目（kind === 'session'）额外展示 provider / effort / 耗时 / token，
  * 即被顶部状态条砍掉的那些摘要（F8）。
+ *
+ * ── v0.2 的三件事都挂在正文上方那条工具栏里 ──────────────────────
+ *   F14 互跳：工具调用 ⇄ 工具结果，靠 `call_id`（shared/pairing.ts）
+ *   F18 复制：正文 / 原始 JSON，复制的都是**已脱敏**的那份（§9.1）
+ *   F20 分段：正文按 markdown 标题切成可折叠的段
  */
-import { useMemo, useState, type ReactNode, type RefObject } from 'react';
+import { useMemo, useState, type RefObject } from 'react';
 import type { Entry, SessionSummary } from '../../shared/types';
 import { GROUP_BY_ID, kindToGroup } from '../../shared/groups';
+import { counterpart, type CallPair } from '../../shared/pairing';
 import { DETAIL_TRUNCATE, formatClock, formatDuration, kindLabel } from '../format';
 import { useT } from '../i18n';
 import { RawJson } from './RawJson';
+import { CopyButtons } from './CopyButtons';
+import { BodySections, splitSections } from './BodySections';
+import { countHits, highlight } from './Highlight';
+
+// 这两个曾经定义在本文件里；分段视图也要用，已挪进 Highlight.tsx。
+// 保留再导出，是为了不改动可能存在的外部引用点。
+export { countHits, highlight };
 
 export interface DetailPanelProps {
   entry: Entry;
@@ -25,9 +38,27 @@ export interface DetailPanelProps {
   onResizeStart: (e: { clientX: number; preventDefault?: () => void }) => void;
   /** ⌘F 聚焦面板内搜索（§6.5） */
   searchRef?: RefObject<HTMLInputElement | null>;
+  /**
+   * F14 工具调用配对表。**必须用全量 entries 建**（`buildPairs(entries)`），
+   * 不能用过滤后的 visible——用户把「行动」组关掉时对家就找不到了，
+   * 而互跳的意义恰恰是「跳到当前没在看的那一条」。
+   *
+   * 不传（或传空）就完全不渲染互跳区，不会出现点了没反应的按钮。
+   */
+  pairs?: Map<string, CallPair>;
+  /** F14 互跳：跳到对家条目。参数是 `Entry.index`，由 App 转成选中 */
+  onJump?: (index: number) => void;
 }
 
-export function DetailPanel({ entry, summary, onClose, onResizeStart, searchRef }: DetailPanelProps) {
+export function DetailPanel({
+  entry,
+  summary,
+  onClose,
+  onResizeStart,
+  searchRef,
+  pairs,
+  onJump,
+}: DetailPanelProps) {
   // kindLabel 走 shared 目录取词，要显式的 locale——它不是组件，拿不到 Context
   const { locale, t, rt } = useT();
   const [expanded, setExpanded] = useState(false);
@@ -37,10 +68,28 @@ export function DetailPanel({ entry, summary, onClose, onResizeStart, searchRef 
   // preview 现在是 Text（可能是 MsgRef），截断与计数都按**译文**的长度算——
   // 用户看到的是译文，字符数说的也必须是译文的字符数，否则「已截断至 2000」对不上。
   const full = rt(entry.preview ?? '');
-  const truncated = !expanded && full.length > DETAIL_TRUNCATE;
+
+  // F20：切段是纯字符串运算，正文没变就别重算（AGENTS.md 那条 23 041 字符）
+  const sections = useMemo(
+    () => (full.length > DETAIL_TRUNCATE ? splitSections(full) : []),
+    [full],
+  );
+  /** 只有「确实大」且「真的切出 ≥2 段」才提供分段视图，理由见 BodySections 文件头 */
+  const sectionable = sections.length >= 2;
+  const [sectioned, setSectioned] = useState(true);
+  const showSections = sectionable && sectioned;
+
+  const truncated = !showSections && !expanded && full.length > DETAIL_TRUNCATE;
   const shown = truncated ? full.slice(0, DETAIL_TRUNCATE) : full;
 
-  const hits = useMemo(() => countHits(shown, query), [shown, query]);
+  // 分段视图下正文分散在各段里，命中数按**全文**算才不会骗人
+  const hits = useMemo(
+    () => countHits(showSections ? full : shown, query),
+    [showSections, full, shown, query],
+  );
+
+  const mate = pairs ? counterpart(pairs, entry) : undefined;
+  const isTool = entry.kind === 'tool_call' || entry.kind === 'tool_out';
 
   return (
     <aside className="detail" data-testid="detail-panel" aria-label={t('ui.detail')}>
@@ -104,7 +153,66 @@ export function DetailPanel({ entry, summary, onClose, onResizeStart, searchRef 
           {entry.kind === 'session' && summary && <SummaryRows summary={summary} />}
         </dl>
 
-        {shown ? (
+        {/*
+         * F14 · 工具调用互跳。
+         * 配得上对家 → 一个按钮；配不上 → 一句说明（**不是**一个点了没反应的按钮）。
+         * 两者都只在工具条目上出现，别的记录本来就没有对家这回事。
+         */}
+        {isTool && pairs && (
+          <div className="detail-pair" data-testid="detail-pair">
+            {mate && onJump ? (
+              <button
+                type="button"
+                className="link-btn"
+                data-testid="jump-counterpart"
+                data-target={mate.index}
+                onClick={() => onJump(mate.index)}
+              >
+                {t(entry.kind === 'tool_call' ? 'ui.jumpToOutput' : 'ui.jumpToCall')}
+              </button>
+            ) : (
+              <span className="detail-pair-none" data-testid="no-counterpart">
+                {t('ui.noCounterpart')}
+              </span>
+            )}
+          </div>
+        )}
+
+        <CopyButtons body={full} json={entry.rawPretty} />
+
+        {/*
+         * F20 · 分段 ⇄ 整段。用 aria-pressed 而不是 aria-expanded：
+         * 这是视图切换，不是又一层下钻（同 RawJson 的视图按钮）。
+         */}
+        {sectionable && (
+          <div className="detail-viewswitch" role="group" aria-label={t('ui.sections')}>
+            <button
+              type="button"
+              className={`rawjson-view${showSections ? ' on' : ''}`}
+              aria-pressed={showSections}
+              data-testid="view-sections"
+              onClick={() => setSectioned(true)}
+            >
+              {t('ui.sections')}
+            </button>
+            <button
+              type="button"
+              className={`rawjson-view${showSections ? '' : ' on'}`}
+              aria-pressed={!showSections}
+              data-testid="view-whole"
+              onClick={() => setSectioned(false)}
+            >
+              {t('ui.wholeText')}
+            </button>
+            <span className="detail-section-count" data-testid="section-count">
+              {t('ui.sectionCount', { n: sections.length })}
+            </span>
+          </div>
+        )}
+
+        {showSections ? (
+          <BodySections sections={sections} query={query} />
+        ) : shown ? (
           <pre className="detail-content mono" data-testid="detail-content">
             {highlight(shown, query)}
           </pre>
@@ -112,7 +220,7 @@ export function DetailPanel({ entry, summary, onClose, onResizeStart, searchRef 
           <p className="detail-empty">{t('ui.noBody')}</p>
         )}
 
-        {full.length > DETAIL_TRUNCATE && (
+        {!showSections && full.length > DETAIL_TRUNCATE && (
           <p className="truncate-note">
             <span>
               {t('ui.bodyChars', { n: full.length })}
@@ -161,25 +269,5 @@ function SummaryRows({ summary }: { summary: SessionSummary }) {
       <dt>token</dt>
       <dd>{tokens}</dd>
     </>
-  );
-}
-
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-export function countHits(text: string, query: string): number {
-  const q = query.trim();
-  if (!q) return 0;
-  return text.toLowerCase().split(q.toLowerCase()).length - 1;
-}
-
-/** ⌘F 的面板内搜索：命中处包 <mark>，不改变文本本身（复制出去还是原文） */
-export function highlight(text: string, query: string): ReactNode {
-  const q = query.trim();
-  if (!q) return text;
-  const parts = text.split(new RegExp(`(${escapeRe(q)})`, 'gi'));
-  return parts.map((part, i) =>
-    part.toLowerCase() === q.toLowerCase() ? <mark key={i}>{part}</mark> : part,
   );
 }

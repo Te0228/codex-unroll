@@ -206,6 +206,36 @@ const EN = {
   'ui.expandContext': (p: MsgParams) => `show ${p.n} context records`,
   'ui.collapseContext': (p: MsgParams) => `hide ${p.n} context records`,
 
+  // ── v0.2 图上的量化视图（F15 / F16 / F17）────────────────────
+  'ui.collapseTurn': 'Collapse this turn',
+  'ui.expandTurn': 'Expand this turn',
+  'ui.turnCollapsed': (p: MsgParams) => `${p.n} records collapsed`,
+  'ui.toolTiming': 'Tool timing',
+  'ui.tokenUsage': 'Token usage',
+  'ui.tokenPerStep': 'per step',
+  'ui.tokenCumulative': 'cumulative',
+  'ui.tokenCumulativeNote':
+    'total_token_usage is cumulative for the whole session; per-step numbers are differences',
+  'ui.inputTokens': 'input',
+  'ui.outputTokens': 'output',
+  'ui.noTiming': 'no duration available',
+  'ui.stillRunning': 'no result yet',
+  'ui.toolTook': (p: MsgParams) => `${p.tool} took ${p.value}`,
+
+  // ── v0.2 详情面板（F14 / F18 / F20）──────────────────────────
+  'ui.jumpToOutput': 'Jump to the result',
+  'ui.jumpToCall': 'Jump to the call',
+  'ui.noCounterpart': 'no matching record in this file',
+  'ui.copy': 'Copy',
+  'ui.copyBody': 'Copy body',
+  'ui.copyJson': 'Copy raw JSON',
+  'ui.copied': 'Copied',
+  'ui.copyFailed': 'Copy failed',
+  'ui.copyRedactedNote': 'What you copy is the redacted text — secrets stay masked',
+  'ui.sections': 'Sections',
+  'ui.sectionCount': (p: MsgParams) => (p.n === 1 ? '1 section' : `${p.n} sections`),
+  'ui.wholeText': 'Whole text',
+
   // ── 详情面板 ────────────────────────────────────────────────
   'ui.detail': 'Details',
   'ui.closeDetail': 'Close detail panel',
@@ -356,6 +386,35 @@ const ZH: Record<MsgKey, Msg> = {
   'ui.turnOpen': '进行中 · 未见 task_complete',
   'ui.expandContext': (p) => `展开上下文 ${p.n} 条`,
   'ui.collapseContext': (p) => `收起上下文 ${p.n} 条`,
+
+  // ── v0.2 图上的量化视图（F15 / F16 / F17）────────────────────
+  'ui.collapseTurn': '折叠这一轮',
+  'ui.expandTurn': '展开这一轮',
+  'ui.turnCollapsed': (p: MsgParams) => `已折叠 ${p.n} 条`,
+  'ui.toolTiming': '工具耗时',
+  'ui.tokenUsage': 'Token 用量',
+  'ui.tokenPerStep': '单步',
+  'ui.tokenCumulative': '累计',
+  'ui.tokenCumulativeNote': 'total_token_usage 是整个会话的累计值，单步数字是做差得到的',
+  'ui.inputTokens': '输入',
+  'ui.outputTokens': '输出',
+  'ui.noTiming': '算不出耗时',
+  'ui.stillRunning': '还没有结果',
+  'ui.toolTook': (p: MsgParams) => `${p.tool} 耗时 ${p.value}`,
+
+  // ── v0.2 详情面板（F14 / F18 / F20）──────────────────────────
+  'ui.jumpToOutput': '跳到结果',
+  'ui.jumpToCall': '跳到调用',
+  'ui.noCounterpart': '这份文件里没有配对的记录',
+  'ui.copy': '复制',
+  'ui.copyBody': '复制正文',
+  'ui.copyJson': '复制原始 JSON',
+  'ui.copied': '已复制',
+  'ui.copyFailed': '复制失败',
+  'ui.copyRedactedNote': '复制出去的是脱敏后的文本，密钥仍是遮蔽的',
+  'ui.sections': '分段',
+  'ui.sectionCount': (p: MsgParams) => `${p.n} 段`,
+  'ui.wholeText': '整段',
 
   'ui.detail': '详情',
   'ui.closeDetail': '关闭详情面板',

@@ -53,6 +53,12 @@ mid-conversation shows it — `read-only / never` on Turn 1, `workspace-write / 
 
 - **Timeline** — one fixed-height line per record, never wrapped. The whole session structure fits on one screen.
 - **Detail panel** — select a row, read the full content on the right with its own scrollbar. Exactly two levels of drill-down, no deeper.
+- **Tool call pairing** — `function_call` and its `_output` are linked by `call_id`; jump between them in the detail panel. When there is no matching record (interrupted run, truncated file) the button is hidden rather than dead.
+- **Timing and token charts** — a bar per tool call, a bar per step. ★ The token chart plots the **per-step delta**, not `total_token_usage` itself: that field is cumulative for the whole session, so plotting it raw yields an ever-rising line that reads like runaway growth when it is only an accumulator.
+- **Copy** — body or raw JSON, always the **redacted** text.
+- **Collapse a whole turn / split huge bodies** — long sessions fold turn by turn; injected AGENTS.md-sized content splits on markdown headings.
+
+![Timing bars and the token chart](./docs/screenshot-metrics.png)
 - **Six-group filter** — input / thinking / action / output / meta / error, with live counts.
 - **Full-text search** — across titles, content, and raw JSON.
 - **Live follow** — `tail -f` for agent runs, but readable. Debounced incremental reads; only auto-scrolls when you are already at the bottom.
@@ -143,7 +149,7 @@ Requires Node 20+. macOS first; Windows and Linux should work but are untested.
 npm install
 npm start                          # dev mode
 CODEX_HOME=$(pwd)/test npm start   # run against the test fixtures
-npm test                           # 460 unit tests
+npm test                           # 546 unit tests
 npm run test:cov                   # coverage (90% threshold on src/shared/)
 npm run typecheck
 npm run lint                       # oxlint
@@ -179,9 +185,9 @@ Electron Forge · Vite · React 19 · TypeScript · Vitest · oxlint
 
 ## Status
 
-**v0.1 feature-complete; v0.2 adds the graph view; v0.3 adds English/Chinese localization.**
-460 unit tests, 100% line coverage on the normalization layer, end-to-end smoke suite passing
-41/41 in each of the two languages.
+**v0.1 feature-complete; v0.2 adds the graph view; v0.3 adds English/Chinese localization; v0.4 finishes the whole P1 list (pairing, collapse, timing, token chart, copy, sections).**
+546 unit tests, 100% line coverage on the normalization layer, end-to-end smoke suite passing
+51/51 in each of the two languages.
 
 ## Distribution
 

@@ -1153,7 +1153,14 @@ mark {
 
 /* ── Step 块 ─────────────────────────────────────────────────────── */
 
+/* ⚠️ 用 flex + gap 表达 Step 之间的间距，别依赖 <p> 的 UA 默认 margin。
+   这里的 .step-link / .step-filtered / .step-empty 都是 <p>，而全局没有
+   `p { margin: 0 }` 重置——它们原本靠继承来的 1em 上下 margin 撑开间距，
+   于是间距是「浏览器给的」而不是「设计出来的」：哪天加一条 reset 就会静默塌掉。 */
 .steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 6px 8px;
 }
 
@@ -1302,6 +1309,7 @@ mark {
 
 .step-filtered,
 .step-empty {
+  margin: 0;
   padding: 0 10px;
   height: var(--row-h);
   line-height: var(--row-h);
@@ -1338,6 +1346,7 @@ mark {
   align-items: center;
   justify-content: center;
   gap: 6px;
+  margin: 0;
   height: 26px;
   font-size: 11px;
   color: var(--fg-muted);

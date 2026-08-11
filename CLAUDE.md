@@ -29,13 +29,15 @@ M2   shared/rollout.ts + 单测（§14.2 共 40 条）    ✅ 完成，40/40 绿
 M3   主进程 IPC（§14.3 E1–E7）+ 跟随（G1–G7）      ✅ 完成
 M4   React UI（§14.4 F1–F24）                     ✅ 完成
 M5   实时跟随                                     ✅ 完成
-M6   端到端冒烟（§14.6）已脚本化                    ✅ 31/31 绿
+M6   端到端冒烟（§14.6）已脚本化                    ✅ 51/51 绿
 M7   打包分发                                     ✅ zip 产物可跑
 ────────────────────────────────────────────────
-v0.2 主区「图」视图 Session▸Turn▸Step（§6.8）      ✅ §14.9 共 53 条
+v0.2 主区「图」视图 Session▸Turn▸Step（§6.8）      ✅ §14.9 共 72 条
+v0.2 中英双语（§15）                              ✅
+v0.2 §5 P1 全部 F14–F18/F20（§6.9）               ✅ §14.10 共 64 条
 ```
 
-**v0.1 功能完整，v0.2 加了图视图。** 单测 **415 条**全绿，端到端冒烟 31/31。
+**v0.1 功能完整；v0.2 加了图视图、双语、以及 §5 P1 的全部功能。** 单测 **546 条**全绿，端到端冒烟 **51/51**。
 
 ### 已装好的依赖
 
@@ -134,6 +136,36 @@ v0.2 主区「图」视图 Session▸Turn▸Step（§6.8）      ✅ §14.9 共 
 所以 `buildGraph` 吃的必须是**全量** entries，过滤只决定哪些行渲染出来（§6.8.5 第 3 条）。
 验收 G7 专门查这个。
 
+### ★ `file://` 是 secure context，剪贴板真的能用
+
+差点按「`file://` 不安全所以 `navigator.clipboard` 不可用」去设计，**实测推翻了**：
+Electron 43 + `sandbox: true` + `loadFile()` 下 `window.isSecureContext === true`，
+`clipboard-write` 是 `granted`，窗口有焦点时 `writeText` 真的写进系统剪贴板。
+
+但回退路径不是装饰：**窗口失焦时 `writeText` 抛 `NotAllowedError: Document is not focused`**，
+而带真实点击手势的 `execCommand('copy')` 失焦也能成。
+「从别的应用切回来直接点复制」正是失焦场景。两条路都要留。
+
+两个连带的坑：
+
+```js
+await navigator.clipboard?.writeText(t)   // ❌ 没有 clipboard 时 await undefined 直接 resolve
+                                          //    → 报告成功、其实什么都没复制
+```
+
+回退用的 textarea 只能移到屏幕外，**不能 `display:none` / `visibility:hidden`** ——
+那样的元素选不中，复制出来是空串。
+
+### ★ `total_token_usage` 是会话累计值，画图前必须做差
+
+夹具 04 实测：`11840 → 24800 → … → 128620`，单调递增，因为字段名就叫 **total**。
+直接画成曲线会得到一条永远向上的斜线，看着像每步暴涨，其实只是累计量 —— **图会骗人**。
+
+增量**可能为负**，不许夹到 0。原因已在源码核实：`append_last_usage`
+（`protocol/src/protocol.rs:2122`）是 `add_assign` 所以正常单调递增，
+但 `fill_to_context_window`（同文件 2127）会整体替换该结构、把 input/output 归零。
+**这和 compact 无关** —— compact 走的是另一套 `active_context_tokens` 埋点。
+
 ### ★ Task 和 Turn 是同一层
 
 `codex-rs/core/src/tasks/mod.rs` 文件头原话：「协议里对外说的 Turn，在 core 内部的实现
@@ -148,7 +180,7 @@ v0.2 主区「图」视图 Session▸Turn▸Step（§6.8）      ✅ §14.9 共 
 ```bash
 npm start            # electron-forge start（Vite HMR）
 npm run typecheck    # tsc --noEmit
-npm test             # vitest run，415 条
+npm test             # vitest run，546 条
 npm test -- rollout  # 单文件
 npm run test:cov     # 覆盖率（src/shared/ 门槛 90%）
 npm run make         # 打包 zip

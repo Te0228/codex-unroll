@@ -20,13 +20,26 @@
  *
  * Turn 前言（task_started / world_state / turn_context / 系统消息）**默认全展开**，
  * 收起后仍保留用户消息和异常两类——「这一轮为什么开始」和「哪里出问题了」。
+ *
+ * ── v0.2 在图上叠的三件事（SPEC §5 P1）─────────────────────────────
+ *   · **F15 整轮折叠**（本文件的 `Turn`）：头尾留着，正文收起，说清藏了几条。
+ *   · **F16 工具耗时条**（`MetricTiming`）：刻度是**全会话共用**的一把尺子，
+ *     在本文件算一次往下传——各 Step 自己归一化会把长短关系画反。
+ *   · **F17 Token 用量图**（`MetricTokens`）：默认画单步增量，
+ *     因为 `total_token_usage` 是累计值，直接画会得到一条骗人的斜线。
+ * 三者都从**全量** entries 取数，过滤只决定哪些行渲染（§6.8.5 第 3 条）——
+ * 度量跟着过滤器变，比不显示更糟：那是**错的数字**，不是缺的数字。
  */
-import { Fragment, memo, useState } from 'react';
+import { Fragment, memo, useMemo, useState } from 'react';
 import type { Entry } from '../../shared/types';
 import type { SessionGraph, StepNode, StepOutcome, TurnNode } from '../../shared/steps';
-import { isUserInput } from '../../shared/steps';
+import { flattenGraph, isUserInput } from '../../shared/steps';
+import type { ToolSpan } from '../../shared/metrics';
+import { maxDuration, toolSpans } from '../../shared/metrics';
 import type { MsgKey } from '../../shared/i18n';
 import { TimelineRow } from './TimelineRow';
+import { MetricTiming } from './MetricTiming';
+import { MetricTokens } from './MetricTokens';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useT } from '../i18n';
 import { formatDuration } from '../format';
@@ -67,6 +80,22 @@ export function StepGraph({
   const { scrollRef, onScroll } = useAutoScroll(total, selectedIndex);
   const empty = graph.turns.length === 0 && graph.preamble.length === 0;
 
+  /**
+   * F16 的工具耗时（§5）。**在这里算一次，往下传**，理由有两条：
+   *   1. 刻度必须是**全会话共用**的一把尺子，否则各 Step 自己归一化，
+   *      0.5s 的 apply_patch 会画得和 1.8s 的 exec_command 一样长（见 MetricTiming）。
+   *   2. 算的是**全量** entries（`flattenGraph` 把图摊回原序列），
+   *      与 §6.8.5 第 3 条同一条纪律：过滤只决定哪些行渲染，
+   *      不该让度量跟着变——关掉「行动」组不该把耗时条一起关掉。
+   */
+  const spans = useMemo(() => {
+    const byCall = new Map<string, ToolSpan>();
+    for (const s of toolSpans(flattenGraph(graph))) byCall.set(s.callId, s);
+    return byCall;
+  }, [graph]);
+  // 一条都算不出耗时（只有调用没有结果 / 时间戳全缺）→ 没有尺子，整块不画
+  const timeScale = useMemo(() => maxDuration([...spans.values()]), [spans]);
+
   return (
     <div className="graph" data-testid="graph" ref={scrollRef} onScroll={onScroll}>
       <div className="graph-inner">
@@ -95,8 +124,18 @@ export function StepGraph({
             visible={visible}
             selectedIndex={selectedIndex}
             onSelect={onSelect}
+            spans={spans}
+            timeScale={timeScale}
           />
         ))}
+
+        {/*
+         * F17 · 会话级的用量图，摆在**全部 Turn 之后**。
+         * 摆到顶上就成了 §6.0 / F5 明确否掉的「摘要卡片区」，
+         * 会把第一屏从「这一轮发生了什么」挤成「统计」。
+         * 一个 token_count 都没有时它自己返回 null，不占位。
+         */}
+        {!empty && <MetricTokens graph={graph} />}
 
         {empty && <p className="sessions-empty">{t('ui.nothingToShow')}</p>}
       </div>
@@ -111,16 +150,63 @@ interface TurnProps {
   visible: Set<number>;
   selectedIndex: number | null;
   onSelect: (index: number) => void;
+  /** call_id → 耗时（F16）。全会话算一次，见 StepGraph 里的注释 */
+  spans: Map<string, ToolSpan>;
+  /** 耗时条共用的刻度上限；undefined = 一条都算不出，整块不画 */
+  timeScale?: number;
 }
 
-function Turn({ turn, visible, selectedIndex, onSelect }: TurnProps) {
+/**
+ * ★ F15 · 整轮折叠。
+ *
+ * 和 Turn 前言的折叠（`TurnPreamble`）是**两件事**，别合并：
+ * 前言折的是「这一轮开始前灌进去的上下文」，整轮折的是「这一轮我看过了，收起来」。
+ * 长会话里翻到第 7 轮时，前 6 轮每轮几十行，没有整轮折叠就只能一路滚。
+ *
+ * 三条不许改的：
+ *   1. **默认展开**。同 §6.8.8：查看器的职责是「摊开」不是「摘要」，
+ *      看不见的东西等于不存在。折叠必须由用户主动按。
+ *   2. **头和尾留着**。折起来还能看见 `Turn N · 冻结配置 · N step` 和
+ *      时长/首字/task_complete——收起的是正文，不是这一轮的身份。
+ *   3. **说清藏了几条**（`ui.turnCollapsed`）。悄悄消失就成了数据丢失。
+ *
+ * ⚠️ 藏起来的条数按**全量**算，不按当前可见的算：口径同 §6.8.5 第 3 条，
+ *    这个数字描述的是结构（这一轮有多少条记录），不是过滤器的结果。
+ *
+ * ⚠️ 折叠状态是每个 Turn 各自的组件内 state，**不持久化**：
+ *    它是「我这会儿看完了」的临时表态，不是视图偏好那种长期表态（对比 useViewMode）。
+ */
+function Turn({ turn, visible, selectedIndex, onSelect, spans, timeScale }: TurnProps) {
   const { t } = useT();
+  const [open, setOpen] = useState(true);
   const config = [turn.model, turn.effort, turn.approval, turn.sandbox].filter(Boolean).join(' · ');
   const end = turn.end;
 
+  // 折起来会藏掉多少条：前言 + 每个 Step 的正文与块尾。task_complete 在 Turn 尾，不算
+  const hidden =
+    turn.preamble.length +
+    turn.steps.reduce((n, s) => n + s.entries.length + (s.usage ? 1 : 0), 0);
+
   return (
-    <section className="turn" data-testid="turn" data-turn={turn.no} data-status={turn.status}>
+    <section
+      className="turn"
+      data-testid="turn"
+      data-turn={turn.no}
+      data-status={turn.status}
+      data-collapsed={open ? undefined : '1'}
+    >
       <header className="turn-head">
+        <button
+          type="button"
+          className="turn-toggle"
+          data-testid="turn-toggle"
+          aria-expanded={open}
+          aria-label={open ? t('ui.collapseTurn') : t('ui.expandTurn')}
+          title={open ? t('ui.collapseTurn') : t('ui.expandTurn')}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+        </button>
         {/* config 是模型名/审批模式这些**纯数据**，原样显示，不进目录 */}
         <span className="turn-no">{t('ui.turnNo', { no: turn.no })}</span>
         {config && <span className="turn-config">{config}</span>}
@@ -128,29 +214,44 @@ function Turn({ turn, visible, selectedIndex, onSelect }: TurnProps) {
         <span className="turn-steps">{t('ui.stepCount', { n: turn.steps.length })}</span>
       </header>
 
-      <TurnPreamble
-        entries={turn.preamble}
-        visible={visible}
-        selectedIndex={selectedIndex}
-        onSelect={onSelect}
-      />
+      {open ? (
+        <>
+          <TurnPreamble
+            entries={turn.preamble}
+            visible={visible}
+            selectedIndex={selectedIndex}
+            onSelect={onSelect}
+          />
 
-      <div className="steps">
-        {turn.steps.map((step, i) => (
-          <Fragment key={step.no}>
-            <Step step={step} visible={visible} selectedIndex={selectedIndex} onSelect={onSelect} />
-            {i < turn.steps.length - 1 && (
-              <p className="step-link" data-testid="step-link">
-                <span className="step-arrow" aria-hidden="true">
-                  ↓
-                </span>
-                {step.outcome === 'act' ? t('ui.stepLinkAct') : t('ui.stepLinkContinue')}
-              </p>
-            )}
-          </Fragment>
-        ))}
-        {turn.steps.length === 0 && <p className="step-empty">{t('ui.turnNoOutput')}</p>}
-      </div>
+          <div className="steps">
+            {turn.steps.map((step, i) => (
+              <Fragment key={step.no}>
+                <Step
+                  step={step}
+                  visible={visible}
+                  selectedIndex={selectedIndex}
+                  onSelect={onSelect}
+                  spans={spans}
+                  timeScale={timeScale}
+                />
+                {i < turn.steps.length - 1 && (
+                  <p className="step-link" data-testid="step-link">
+                    <span className="step-arrow" aria-hidden="true">
+                      ↓
+                    </span>
+                    {step.outcome === 'act' ? t('ui.stepLinkAct') : t('ui.stepLinkContinue')}
+                  </p>
+                )}
+              </Fragment>
+            ))}
+            {turn.steps.length === 0 && <p className="step-empty">{t('ui.turnNoOutput')}</p>}
+          </div>
+        </>
+      ) : (
+        <p className="turn-collapsed" data-testid="turn-collapsed">
+          {t('ui.turnCollapsed', { n: hidden })}
+        </p>
+      )}
 
       <footer className="turn-foot">
         {turn.status === 'complete' ? (
@@ -192,7 +293,19 @@ function Turn({ turn, visible, selectedIndex, onSelect }: TurnProps) {
  * ⚠️ 这个展开**不算一层下钻**（§14.8 的既定口径：本层内部导航不计），
  *    所以不打 `data-drill`。真正的下钻仍然只有「图 → 详情面板」这一次。
  */
-function TurnPreamble({ entries, visible, selectedIndex, onSelect }: Omit<TurnProps, 'turn'> & { entries: Entry[] }) {
+/**
+ * ★ 不再写成 `Omit<TurnProps, 'turn'>`：F16 给 Turn 加了 `spans` / `timeScale`，
+ *   前言根本用不到它们，跟着继承只会逼调用方传一份用不上的度量下来。
+ *   共享 props 类型省的是几行字，代价是每加一个字段就多一处无谓的耦合。
+ */
+interface TurnPreambleProps {
+  entries: Entry[];
+  visible: Set<number>;
+  selectedIndex: number | null;
+  onSelect: (index: number) => void;
+}
+
+function TurnPreamble({ entries, visible, selectedIndex, onSelect }: TurnPreambleProps) {
   const { t } = useT();
   const [open, setOpen] = useState(true);
   if (entries.length === 0) return null;
@@ -236,14 +349,32 @@ interface StepProps {
   visible: Set<number>;
   selectedIndex: number | null;
   onSelect: (index: number) => void;
+  spans: Map<string, ToolSpan>;
+  timeScale?: number;
 }
 
-const Step = memo(function Step({ step, visible, selectedIndex, onSelect }: StepProps) {
+const Step = memo(function Step({
+  step,
+  visible,
+  selectedIndex,
+  onSelect,
+  spans,
+  timeScale,
+}: StepProps) {
   const { t } = useT();
   const o = OUTCOME[step.outcome];
   const shown = step.entries.filter((e) => visible.has(e.index));
   const filtered = step.entries.length - shown.length;
   const usage = step.usage;
+
+  /**
+   * 本步的工具耗时（F16）。挂在**本步全部** entries 上，不是可见的那些——
+   * 过滤器不该改变度量（§6.8.5 第 3 条）。
+   * 顺序跟着调用出现的顺序走，与块头 `step.tools` 的口径一致。
+   */
+  const mySpans = step.entries
+    .map((e) => (e.kind === 'tool_call' && e.callId ? spans.get(e.callId) : undefined))
+    .filter((s): s is ToolSpan => s !== undefined);
 
   return (
     <article
@@ -301,6 +432,13 @@ const Step = memo(function Step({ step, visible, selectedIndex, onSelect }: Step
         {filtered > 0 && <p className="step-filtered">{t('ui.filteredOut', { n: filtered })}</p>}
         {step.entries.length === 0 && <p className="step-filtered">{t('ui.stepNoOutput')}</p>}
       </div>
+
+      {/*
+       * F16 · 耗时条摆在正文之下、用量之上：支线里每一行都得守着 §6.0 的
+       * 固定单行高，把条子塞进去会把行撑破（F2/F3）。
+       * `timeScale` 为 undefined = 全会话一条耗时都算不出来 → 整块不画。
+       */}
+      {timeScale !== undefined && <MetricTiming spans={mySpans} max={timeScale} />}
 
       {usage && (
         <button

@@ -215,6 +215,45 @@ export async function runSmoke(
     `(()=>{const g=document.querySelector('[data-testid="graph"]');
        return g.scrollWidth<=g.clientWidth+1})()`));
 
+  // ── §6.9 的量化视图：只有真实渲染器能测的那几条 ────────────────────
+  // jsdom 不做布局，「条形图不撑破布局」「行仍等高」在单测里恒真、等于没测。
+  check('§6.9.3 耗时条渲染出来了', true, await js(
+    `document.querySelectorAll('[data-testid="timing-row"]').length > 0`));
+  check('§6.9.3 耗时条每行等高', 1, await js(
+    `new Set([...document.querySelectorAll('[data-testid="timing-row"]')].map(e=>e.offsetHeight)).size`));
+  check('§6.9.4 用量图渲染出来了', true, await js(
+    `!!document.querySelector('[data-testid="token-chart"]')`));
+  // ★ 默认是「单步增量」而不是累计——累计会画成一条永远向上的斜线，图会骗人
+  check('§6.9.4 默认单步模式（图上搜不到累计值 34188）', true, await js(
+    `(()=>{const c=document.querySelector('[data-testid="token-chart"]');
+       return !!c && !c.innerText.includes('34188')})()`));
+  check('§6.9.4 切到累计模式后才出现累计值', true, await js(
+    `(()=>{document.querySelector('[data-testid="token-mode-total"]')?.click();
+       return true})()`));
+  await waitFor(`document.querySelector('[data-testid="token-chart"]')?.innerText?.includes('34188')`,
+    '累计模式渲染');
+  check('§6.9.4 累计模式显示 34188（§14.2 C11 的会话合计）', true, await js(
+    `document.querySelector('[data-testid="token-chart"]').innerText.includes('34188')`));
+  await js(`document.querySelector('[data-testid="token-mode-delta"]')?.click()`);
+  // ★ 新增的两块都不许把主区撑出横向滚动（F3 的延伸）
+  check('§6.9 量化视图无横向溢出', true, await js(
+    `(()=>{const g=document.querySelector('.graph-inner');
+       return g.scrollWidth<=g.clientWidth+1})()`));
+
+  // ── §6.9.2 整轮折叠 ───────────────────────────────────────────────
+  check('§6.9.2 折叠前 Turn 里有正文行', true, await js(
+    `document.querySelectorAll('[data-testid="turn"] .row').length > 0`));
+  await js(`document.querySelector('[data-testid="turn-toggle"]')?.click()`);
+  await waitFor(`document.querySelector('[data-testid="turn-collapsed"]')`, '整轮折叠');
+  check('§6.9.2 折叠后正文行清空，但 Turn 骨架还在', [0, 1], await js(
+    `[document.querySelectorAll('[data-testid="turn"] .row').length,
+      document.querySelectorAll('[data-testid="turn"]').length]`));
+  check('§6.9.2 折叠说清藏了几条（01 号夹具 17 条）', true, await js(
+    `document.querySelector('[data-testid="turn-collapsed"]').textContent.includes('17')`));
+  await js(`document.querySelector('[data-testid="turn-toggle"]')?.click()`);
+  await waitFor(`document.querySelectorAll('[data-testid="turn"] .row').length`, '整轮展开');
+  await shot('6-metrics');
+
   // ── 切到列表视图，跑原有的 §14.4 布局断言 ─────────────────────────
   await js(`document.querySelector('[data-testid="view-list"]')?.click()`);
   await waitFor(`document.querySelector('[data-testid="timeline"]')`, '列表视图渲染');
